@@ -1,0 +1,6 @@
+{
+  "name": "MaelG Systems Control Plane",
+  "description": "Painel de controlo de licenças, faturamento AGT e provisionamento de suites SaaS angolanas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
