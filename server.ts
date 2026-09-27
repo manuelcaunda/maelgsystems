@@ -4,7 +4,8 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { getDb, saveDb, generateMaelgCode, logCredentialEmission, getCredentialsLogs } from './server_db';
-import bcrypt from 'bcryptjs';
+import { provisionar, ProvisionamentoError } from './src/server/provisionar';
+import { testarLigacao } from './src/server/maelgest-db';
 
 const isProd = process.env.NODE_ENV === 'production';
 const PORT = process.env.PORT || 3000;
@@ -22,9 +23,15 @@ async function startServer() {
 
   // --- API Routes ---
 
-  // Healthz check
-  app.get('/api/healthz', (req, res) => {
-    res.json({ status: 'ok', runtime: 'node-express', database: 'json-persistent' });
+  // Healthz check — inclui o estado da ligação MySQL ao MaelGest
+  app.get('/api/healthz', async (req, res) => {
+    const mysql_ = await testarLigacao();
+    res.json({
+      status: mysql_.ok ? 'ok' : 'degradado',
+      runtime: 'node-express',
+      database: 'json-persistent',
+      maelgest_mysql: mysql_.ok ? 'ligado' : `erro: ${mysql_.erro}`,
+    });
   });
 
   // Credentials Log Viewer (Simulated Emails)
@@ -41,49 +48,37 @@ async function startServer() {
       const admin_email = (data.admin_email || '').trim();
       const admin_password = data.admin_password || '';
 
-      if (escola_nome.length < 3) {
-        return res.status(400).json({ erro: 'Nome da escola deve ter pelo menos 3 caracteres.' });
-      }
-      if (admin_nome.length < 3) {
-        return res.status(400).json({ erro: 'Nome do Director Geral deve ter pelo menos 3 caracteres.' });
-      }
-      if (admin_password.length < 8) {
-        return res.status(400).json({ erro: 'A palavra-passe deve ter pelo menos 8 caracteres.' });
-      }
-
       const db = getDb();
 
-      // Check duplicate school or email
-      const escolaExiste = db.escola.some(e => e.nome.toLowerCase() === escola_nome.toLowerCase());
-      if (escolaExiste) {
-        return res.status(409).json({ erro: 'Já existe uma escola com este nome.' });
-      }
+      // ── Aprovisionamento REAL na BD MySQL do MaelGest ──────────────────
+      // Valida, gera códigos, e cria escola + Director Geral numa transacção.
+      // Os IDs devolvidos são os verdadeiros (AUTO_INCREMENT do MySQL).
+      const real = await provisionar({
+        escola_nome,
+        admin_nome,
+        admin_email,
+        admin_password,
+        escola_tipo: data.escola_tipo,
+        escola_designacao: data.escola_designacao,
+        escola_regime_ensino: data.escola_regime_ensino,
+        escola_endereco: data.escola_endereco ?? null,
+        escola_contacto_telefone: data.escola_contacto_telefone || null,
+        escola_contacto_email: data.escola_contacto_email || null,
+        nif: data.nif ?? null,
+        province: data.province ?? null,
+        notes: data.notes ?? null,
+      });
 
-      const utilizadorExiste = db.utilizador.some(u => u.email.toLowerCase() === admin_email.toLowerCase());
-      if (utilizadorExiste) {
-        return res.status(409).json({ erro: 'Este email já está em uso. Escolha outro.' });
-      }
+      const escola_id = real.escola_id;
+      const admin_id = real.admin_id;
+      const funcionario_id = real.funcionario_id;
+      const codigo_escola = real.escola_codigo;
+      const codigo_admin = real.admin_codigo;
+      const papel_id = real.papel_id;
 
-      // Generate codes
-      let codigo_escola = generateMaelgCode();
-      while (db.escola.some(e => e.codigo === codigo_escola)) {
-        codigo_escola = generateMaelgCode();
-      }
-
-      let codigo_admin = generateMaelgCode();
-      while (db.utilizador.some(u => u.codigo === codigo_admin)) {
-        codigo_admin = generateMaelgCode();
-      }
-
-      const escola_id = db.escola.length + 1001;
-      const admin_id = db.utilizador.length + 2001;
-      const funcionario_id = db.funcionario.length + 3001;
-
-      // Hashing password
-      const password_hash = bcrypt.hashSync(admin_password, 10);
-
-      // Insert into scuola (MaelGest)
-      const novaEscola = {
+      // Espelho local (cache de leitura). A BD real é a fonte de verdade —
+      // o hash da password NÃO é copiado para o JSON.
+      db.escola.push({
         id: escola_id,
         codigo: codigo_escola,
         nome: escola_nome,
@@ -94,37 +89,32 @@ async function startServer() {
         contacto_telefone: data.escola_contacto_telefone || '',
         director_id: funcionario_id,
         primeiro_acesso_pendente: 1
-      };
-      db.escola.push(novaEscola);
+      });
 
-      // Insert into Utilizador
-      const novoUtilizador = {
+      db.utilizador.push({
         id: admin_id,
         codigo: codigo_admin,
         email: admin_email,
         nome: admin_nome,
-        password_hash,
+        password_hash: '',
         ativo: 1,
         is_super_admin: 0
-      };
-      db.utilizador.push(novoUtilizador);
+      });
 
-      // Bind roles and school
       db.utilizador_escola.push({
         id: db.utilizador_escola.length + 1,
         utilizador_id: admin_id,
         escola_id,
-        papel_id: 1 // Director Geral ID
+        papel_id
       });
 
       db.usuario_papel.push({
         id: db.usuario_papel.length + 1,
         usuario_id: admin_id,
-        papel_id: 1,
+        papel_id,
         escola_id
       });
 
-      // Funcionario
       db.funcionario.push({
         id: funcionario_id,
         nome: admin_nome,
@@ -168,31 +158,17 @@ async function startServer() {
         adminPassword: admin_password,
         adminRole,
         maelgestOutput: {
-          schoolCode,
-          adminCode,
+          schoolCode: codigo_escola,
+          adminCode: codigo_admin,
           adminRole,
-          adminPassword: admin_password,
           firstAccess: new Date().toISOString(),
-          apiPayload: JSON.stringify({
-            tenant_code: tenantCode,
-            root: {
-              name: escola_nome,
-              nif: data.nif || '5401928123',
-              attributes: {
-                tipo: novaEscola.tipo,
-                designacao: novaEscola.designacao,
-                regime_ensino: novaEscola.regime_ensino
-              }
-            },
-            admin: {
-              name: admin_nome,
-              email: admin_email,
-              password: admin_password,
-              role: adminRole
-            },
-            metadata: { plan_slug: data.planSlug || 'maelgest-basic', trial_days: trialDays }
-          }, null, 2),
-          sqlAtomic: `INSERT INTO \`schools\` (\`id\`, \`name\`, \`code\`, \`nif\`, \`province\`, \`city\`) VALUES (${escola_id}, '${escola_nome}', '${tenantCode}', '${data.nif || '5401928123'}', '${data.province || 'Luanda'}', '${data.city || ''}');\nINSERT INTO \`users\` (\`id\`, \`school_id\`, \`name\`, \`email\`, \`password_hash\`, \`role\`) VALUES (${admin_id}, ${escola_id}, '${admin_nome}', '${admin_email}', '${password_hash}', 'director_geral');`
+          mysql: {
+            escola_id,
+            admin_id,
+            funcionario_id,
+            papel_id,
+            tenant_mirrorado: real.tenant_mirrorado
+          }
         }
       };
 
@@ -279,12 +255,19 @@ A Equipa MaelG Systems (AO)
         admin_email,
         admin_password,
         papel: 'director_geral',
+        papel_id,
         funcionario_id,
         primeiro_acesso: 'onboarding_pendente',
-        nota: 'Simulação — em produção as credenciais seriam enviadas por email pela Equipa MaelG.'
+        tenant_mirrorado: real.tenant_mirrorado,
+        nota: real.tenant_mirrorado
+          ? 'Escola criada na BD do MaelGest e tenant espelhado na plataforma.'
+          : `Escola criada na BD do MaelGest. Tenant não espelhado${real.tenant_mirror_erro ? `: ${real.tenant_mirror_erro}` : '.'}`
       });
 
     } catch (e: any) {
+      if (e instanceof ProvisionamentoError) {
+        return res.status(e.status).json({ erro: e.message });
+      }
       console.error(e);
       res.status(500).json({ erro: `Falha ao provisionar: ${e.message}` });
     }

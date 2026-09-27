@@ -98,60 +98,87 @@ export function TenantMaelGestPage() {
           </div>
         </Card>
 
-        {/* first access password */}
+        {/* 1.º acesso */}
         <Card variant="default" padding="md" className="space-y-1">
-          <span className="text-[10px] text-slate-500 font-mono">Senha Temporária de Primeiro Acesso</span>
-          <div className="text-base font-bold font-mono text-white flex items-center justify-between">
-            <span className="select-all">{output.adminPassword || 'Definida pelo cliente'}</span>
-            {output.adminPassword && (
-              <button
-                onClick={() => handleCopy(output.adminPassword || '', 'Senha Provisória')}
-                className="text-slate-500 hover:text-indigo-400 p-1 rounded"
-                title="Copiar Senha"
-              >
-                {copiedSection === 'Senha Provisória' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              </button>
-            )}
+          <span className="text-[10px] text-slate-500 font-mono">Estado do Primeiro Acesso</span>
+          <div className="text-base font-bold font-mono text-white">
+            {output.mysql ? 'Onboarding pendente (2 passos)' : 'Onboarding pendente (2 passos)'}
           </div>
+          <p className="text-[10px] text-slate-500">
+            A palavra-passe não é guardada pela plataforma — é definida no momento do aprovisionamento e apenas
+            transposta para o email do Director Geral.
+          </p>
         </Card>
       </div>
 
-      {/* JSON Payload representation */}
-      <Card variant="default" padding="lg" className="space-y-3">
-        <div className="flex justify-between items-center border-b border-slate-900 pb-3">
-          <div className="flex items-center gap-2">
-            <Server className="w-4 h-4 text-slate-500" />
-            <h3 className="text-sm font-semibold text-white">Payload de Provisionamento JSON (Control Plane Contract)</h3>
+      {/* Resultado do aprovisionamento na BD MySQL do MaelGest */}
+      {output.mysql && (
+        <Card variant="default" padding="lg" className="space-y-3">
+          <div className="flex justify-between items-center border-b border-slate-900 pb-3">
+            <div className="flex items-center gap-2">
+              <Server className="w-4 h-4 text-slate-500" />
+              <h3 className="text-sm font-semibold text-white">Aprovisionamento na BD do MaelGest</h3>
+            </div>
+            <Button
+              size="sm"
+              icon={Copy}
+              onClick={() => handleCopy(JSON.stringify(output.mysql, null, 2), 'IDs do MaelGest')}
+            >
+              {copiedSection === 'IDs do MaelGest' ? 'Copiado!' : 'Copiar JSON'}
+            </Button>
           </div>
-          <Button size="sm" icon={Copy} onClick={() => handleCopy(output.apiPayload, 'JSON Payload')}>
-            {copiedSection === 'JSON Payload' ? 'Copiado!' : 'Copiar JSON'}
-          </Button>
-        </div>
 
-        <div className="relative">
-          <pre className="bg-slate-950 border border-slate-900 text-[11px] font-mono p-4 rounded-lg overflow-x-auto text-indigo-300 max-h-72 leading-relaxed">
-            {output.apiPayload}
-          </pre>
-        </div>
-      </Card>
-
-      {/* Atomic SQL Commands */}
-      <Card variant="default" padding="lg" className="space-y-3">
-        <div className="flex justify-between items-center border-b border-slate-900 pb-3">
-          <div className="flex items-center gap-2">
-            <Code2 className="w-4 h-4 text-slate-500" />
-            <h3 className="text-sm font-semibold text-white">Queries SQL Atómicas Executadas no Data Plane</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px] font-mono">
+            <div className="bg-slate-950 border border-slate-900 rounded-lg p-3">
+              <div className="text-slate-500">escola_id</div>
+              <div className="text-white font-bold">{output.mysql.escola_id}</div>
+            </div>
+            <div className="bg-slate-950 border border-slate-900 rounded-lg p-3">
+              <div className="text-slate-500">admin_id</div>
+              <div className="text-white font-bold">{output.mysql.admin_id}</div>
+            </div>
+            <div className="bg-slate-950 border border-slate-900 rounded-lg p-3">
+              <div className="text-slate-500">funcionario_id</div>
+              <div className="text-white font-bold">{output.mysql.funcionario_id}</div>
+            </div>
+            <div className="bg-slate-950 border border-slate-900 rounded-lg p-3">
+              <div className="text-slate-500">papel_id</div>
+              <div className="text-white font-bold">{output.mysql.papel_id}</div>
+            </div>
           </div>
-          <Button size="sm" icon={Copy} onClick={() => handleCopy(output.sqlAtomic, 'Queries SQL')}>
-            {copiedSection === 'Queries SQL' ? 'Copiadas!' : 'Copiar SQL'}
-          </Button>
+
+          <p className="text-[10px] text-slate-500 flex items-center gap-1.5">
+            <Lock className="w-3 h-3" />
+            Executado numa transacção única: escola, utilizador, utilizador_escola, usuario_papel, funcionario e
+            escola.primeiro_acesso_pendente.
+          </p>
+        </Card>
+      )}
+
+      {/* Tenant espelhado na plataforma */}
+      <Card variant="default" padding="lg" className="space-y-3">
+        <div className="flex items-center gap-2 border-b border-slate-900 pb-3">
+          <Code2 className="w-4 h-4 text-slate-500" />
+          <h3 className="text-sm font-semibold text-white">Espelho na Plataforma (BD `maelg`)</h3>
         </div>
 
-        <div className="relative">
-          <pre className="bg-slate-950 border border-slate-900 text-[11px] font-mono p-4 rounded-lg overflow-x-auto text-slate-300 max-h-60 leading-relaxed">
-            {output.sqlAtomic}
-          </pre>
+        <div className="flex items-center gap-2 text-[11px] font-mono">
+          <span
+            className={`px-2 py-1 rounded ${
+              output.mysql?.tenant_mirrorado
+                ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-900'
+                : 'bg-amber-950/50 text-amber-400 border border-amber-900'
+            }`}
+          >
+            {output.mysql?.tenant_mirrorado ? 'tenant espelhado' : 'tenant não espelhado'}
+          </span>
+          <ExternalLink className="w-3 h-3 text-slate-600" />
         </div>
+
+        <p className="text-[10px] text-slate-500">
+          O espelho em <code className="text-slate-400">maelg.tenant</code> é melhor-esforço: se o produto ou um
+          plano activo não existirem, a escola continua criada no MaelGest e o motivo é registado no log.
+        </p>
       </Card>
     </div>
   );

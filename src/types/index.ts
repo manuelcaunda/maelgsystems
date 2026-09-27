@@ -27,10 +27,18 @@ export interface Tenant {
     schoolCode: string;
     adminCode: string;
     adminRole: string;
-    adminPassword?: string;
     firstAccess: string;
-    apiPayload: string;
-    sqlAtomic: string;
+    /**
+     * Resultado do aprovisionamento na BD MySQL do MaelGest.
+     * Substitui o antigo `sqlAtomic` (que emitia SQL para tabelas inexistentes).
+     */
+    mysql?: {
+      escola_id: number;
+      admin_id: number;
+      funcionario_id: number;
+      papel_id: number;
+      tenant_mirrorado: boolean;
+    };
   };
 }
 

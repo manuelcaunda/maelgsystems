@@ -134,28 +134,8 @@ export const mockTenants: Tenant[] = [
       schoolCode: 'SCH-42',
       adminCode: 'ADM-GIRASSOL',
       adminRole: 'director_geral',
-      adminPassword: 'MaelG@2026xY',
       firstAccess: '2026-03-12T10:02:44Z',
-      apiPayload: JSON.stringify({
-        tenant_code: "TEN-0042",
-        root: {
-          name: "Complexo Escolar Girassol",
-          nif: "5417082910",
-          attributes: {
-            tipo: "privada",
-            designacao: "complexo_escolar",
-            regime_ensino: "geral"
-          }
-        },
-        admin: {
-          name: "Prof. António Morais",
-          email: "a.morais@colegiogirassol.ao",
-          password: "MaelG@2026xY",
-          role: "director_geral"
-        },
-        metadata: { plan_slug: "maelgest-pro", trial_days: 14 }
-      }, null, 2),
-      sqlAtomic: `INSERT INTO \`schools\` (\`id\`, \`name\`, \`code\`, \`nif\`, \`province\`, \`city\`) VALUES (42, 'Complexo Escolar Girassol', 'TEN-0042', '5417082910', 'Cuanza Sul', 'Sumbe');\nINSERT INTO \`users\` (\`id\`, \`school_id\`, \`name\`, \`email\`, \`password_hash\`, \`role\`) VALUES (104, 42, 'Prof. António Morais', 'a.morais@colegiogirassol.ao', '$2b$12$K89s7dy8f...', 'director_geral');`
+      mysql: { escola_id: 42, admin_id: 104, funcionario_id: 61, papel_id: 1, tenant_mirrorado: true }
     }
   },
   {
@@ -182,14 +162,8 @@ export const mockTenants: Tenant[] = [
       schoolCode: 'SCH-43',
       adminCode: 'ADM-PITRUCA',
       adminRole: 'director_geral',
-      adminPassword: 'MaelG@Pitruca26',
       firstAccess: '2026-09-14T11:35:00Z',
-      apiPayload: JSON.stringify({
-        tenant_code: "TEN-0043",
-        root: { name: "Colégio Pitruca", nif: "5028472912" },
-        admin: { name: "Dra. Maria Pitruca", email: "m.pitruca@pitruca.ao", role: "director_geral" }
-      }, null, 2),
-      sqlAtomic: `INSERT INTO \`schools\` (\`id\`, \`name\`, \`code\`) VALUES (43, 'Colégio Pitruca', 'TEN-0043');`
+      mysql: { escola_id: 43, admin_id: 108, funcionario_id: 64, papel_id: 1, tenant_mirrorado: false }
     }
   },
   {
