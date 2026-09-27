@@ -6,28 +6,17 @@ import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { formatAOA, formatDate, getPaymentMethodLabel } from '../../utils/formatters';
-import {
-  CreditCard,
-  Plus,
-  History,
-  FileCheck2,
-  Calendar,
-  DollarSign,
-  Download,
-  CheckCircle2,
-  X
-} from 'lucide-react';
+import { CreditCard, X, FileText } from 'lucide-react';
 
 export function TenantBillingPage() {
   const tenant = useTenant();
   const {
     payments,
     canManagePayments,
-    registerPayment,
-  } = useBackoffice();
+    registerPayment } = useBackoffice();
 
   const [showPayModal, setShowPayModal] = useState(false);
-  const [activePaymentId, setActivePaymentId] = useState('');
+  const [activePaymentId, setActivePaymentId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'multicaixa_referencia' | 'cash' | 'check'>('bank_transfer');
   const [paymentNotes, setPaymentNotes] = useState('');
 
@@ -35,39 +24,29 @@ export function TenantBillingPage() {
 
   // Filter payments of this tenant
   const tenantPayments = payments.filter((p) => p.tenantId === tenant.id);
-  const pendingPayments = tenantPayments.filter((p) => p.status === 'pending');
 
-  const handleOpenPayModal = (id: string) => {
+  const handleOpenPayModal = (id: number) => {
     setActivePaymentId(id);
     setPaymentMethod('bank_transfer');
     setPaymentNotes('');
     setShowPayModal(true);
   };
 
-  const handleClearInvoice = () => {
-    const payment = payments.find(p => p.id === activePaymentId);
-    if (payment) {
-      registerPayment({
-        id: activePaymentId,
-        status: 'paid',
-        paymentMethod,
-        notes: paymentNotes || 'Liquidado e confirmado via Control Plane.',
-        paymentDate: new Date().toISOString(),
-        receiptUrl: `REC-2026-00${payment.id.split('-')[1] || '99'}.pdf`
-      });
-      setShowPayModal(false);
-    }
-  };
-
-  const handleRegisterGenericInvoice = () => {
-    // Registers a brand new monthly invoice
-    const amount = tenant.planSlug.includes('pro') ? 350000 : 150000;
-    registerPayment({
-      tenantId: tenant.id,
-      amount,
-      status: 'pending',
-      dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-    });
+  /**
+   * Liquidar e registar um pagamento novo com o mesmo valor. Um pagamento nao
+   * se edita: e' um recibo. A API gera o numero de recibo e a proxima data de
+   * facturacao a partir da assinatura.
+   */
+  const handleClearInvoice = async () => {
+    const payment = payments.find((p) => p.id === activePaymentId);
+    if (!payment) return;
+    await registerPayment({
+      tenantId: payment.tenantId,
+      amountAoa: payment.amountAoa,
+      paymentMethod,
+      notas: paymentNotes || undefined,
+      reativarSeSuspenso: true });
+    setShowPayModal(false);
   };
 
   return (
@@ -78,11 +57,6 @@ export function TenantBillingPage() {
           <h3 className="text-sm font-semibold text-white">Razão de Cobrança e Pagamentos</h3>
           <p className="text-[11px] text-slate-500">Histórico de faturas emitidas e controlo de liquidações fiscais</p>
         </div>
-        {canManagePayments && tenant.status !== 'cancelled' && (
-          <Button variant="secondary" size="sm" icon={Plus} onClick={handleRegisterGenericInvoice}>
-            Emitir Fatura Manual
-          </Button>
-        )}
       </div>
 
       {tenantPayments.length > 0 ? (
@@ -108,14 +82,14 @@ export function TenantBillingPage() {
                   return (
                     <tr key={p.id} className="hover:bg-slate-900/20 transition-colors">
                       <td className="py-3.5 px-4 font-mono font-semibold text-slate-200">
-                        {p.invoiceNumber}
+                        {p.receiptNumber}
                       </td>
                       <td className="py-3.5 px-4 font-mono font-bold text-white">
-                        {formatAOA(p.amount)}
+                        {formatAOA(p.amountAoa)}
                       </td>
                       <td className="py-3.5 px-4 font-mono text-slate-400">
                         {isPaid ? (
-                          <span className="text-slate-400">Pago a {formatDate(p.paymentDate)}</span>
+                          <span className="text-slate-400">Pago a {formatDate(p.paidAt)}</span>
                         ) : (
                           <span className={isPending ? 'text-amber-400 font-semibold' : 'text-slate-500'}>
                             Vence a {formatDate(p.dueDate)}
@@ -136,17 +110,14 @@ export function TenantBillingPage() {
                           >
                             Liquidar
                           </button>
-                        ) : p.receiptUrl ? (
-                          <a
-                            href="#"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              alert(`Simulando download do recibo oficial AGT para ${p.invoiceNumber}. Ficheiro: ${p.receiptUrl}`);
-                            }}
-                            className="text-slate-500 hover:text-slate-200 inline-flex items-center gap-1 hover:underline text-xs font-sans"
+                        ) : p.status === 'paid' ? (
+                          <span
+                            className="text-slate-500 inline-flex items-center gap-1 text-xs font-sans"
+                            title={p.reference ? `Referencia: ${p.reference}` : undefined}
                           >
-                            <Download className="w-3 h-3" /> Recibo
-                          </a>
+                            <FileText className="w-3.5 h-3.5" />
+                            {p.receiptNumber}
+                          </span>
                         ) : (
                           <span className="text-slate-600">-</span>
                         )}
@@ -167,16 +138,16 @@ export function TenantBillingPage() {
               return (
                 <Card key={p.id} variant="default" padding="md" className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="font-mono font-bold text-slate-200 text-xs">{p.invoiceNumber}</span>
+                    <span className="font-mono font-bold text-slate-200 text-xs">{p.receiptNumber}</span>
                     <StatusBadge domain="payment" status={p.status} />
                   </div>
                   <div className="flex justify-between items-baseline font-mono">
                     <span className="text-slate-500 text-[10px]">Valor:</span>
-                    <strong className="text-sm font-black text-white">{formatAOA(p.amount)}</strong>
+                    <strong className="text-sm font-black text-white">{formatAOA(p.amountAoa)}</strong>
                   </div>
                   <div className="text-[11px] font-mono text-slate-400 flex justify-between items-center">
                     <span className="text-slate-500">Vencimento:</span>
-                    <span>{isPaid ? `Pago a ${formatDate(p.paymentDate)}` : `Vence a ${formatDate(p.dueDate)}`}</span>
+                    <span>{isPaid ? `Pago a ${formatDate(p.paidAt)}` : `Vence a ${formatDate(p.dueDate)}`}</span>
                   </div>
 
                   {isPending && canManagePayments && (
@@ -195,12 +166,7 @@ export function TenantBillingPage() {
         <EmptyState
           icon={CreditCard}
           title="Nenhuma fatura registada"
-          description="Este cliente encontra-se em modo experimental (trial) ou não tem registos de faturação ativos."
-          action={
-            canManagePayments && tenant.status !== 'cancelled'
-              ? { label: 'Emitir Fatura de Produção', onClick: handleRegisterGenericInvoice }
-              : undefined
-          }
+          description="Ainda não há pagamentos registados. A facturação nasce da assinatura activa do plano."
         />
       )}
 

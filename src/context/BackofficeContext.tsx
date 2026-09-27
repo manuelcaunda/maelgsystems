@@ -1,6 +1,36 @@
 import React, { createContext, useState, useContext, useCallback, useEffect } from 'react';
-import { Tenant, Product, Plan, Subscription, Payment, AuditLog, Operator, PlatformSettings } from '../types';
+import { Tenant, NovoTenant, NovoPagamento, Product, Plan, Subscription, Payment, AuditLog, Operator, PlatformSettings } from '../types';
 import { useToast } from './ToastContext';
+import * as sessao from '../services/sessao';
+import type { Permissao } from '../services/sessao';
+
+/**
+ * O que a UI tem para criar um produto.
+ *
+ * `Product` (a resposta da API) nao serve: a credencial nunca volta do
+ * servidor, porque nao ha endpoint que a devolva. Por isso o pedido tem o
+ * seu proprio tipo.
+ */
+interface NovoProdutoUI extends Partial<Product> {
+  produtoChave: string;
+  produtoSegredo: string;
+  primeiroPlano: NovoPlanoUI;
+}
+
+/**
+ * O plano que traz o produto no momento em que e' criado. A API exige pelo
+ * menos um (`criarProdutoComEsqueleto`), porque um produto sem plano nao e
+ * contratavel.
+ */
+interface NovoPlanoUI {
+  codigo: string;
+  nome: string;
+  priceAoa: number;
+  maxStudents: number;
+  maxUsers: number;
+  maxStorageGb: number;
+  isActive: boolean;
+}
 
 interface BackofficeContextType {
   theme: 'light' | 'dark';
@@ -13,10 +43,18 @@ interface BackofficeContextType {
   payments: Payment[];
   auditLogs: AuditLog[];
   operators: Operator[];
-  currentUser: Operator;
+  currentUser: Operator | null;
   settings: PlatformSettings;
-  impersonatingTenant: Tenant | null;
-  
+
+  // Sessao real: o token vive no localStorage, o operador vem da base.
+  // Enquanto `sessaoCarregada` for false, a UI ainda nao sabe quem entrou.
+  sessaoCarregada: boolean;
+  precisaBootstrap: boolean;
+  permissoes: Permissao[];
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => void;
+  temPermissao: (p: Permissao) => boolean;
+
   // Role based access checks (RBAC)
   canManageTenants: boolean;
   canManagePayments: boolean;
@@ -26,10 +64,9 @@ interface BackofficeContextType {
   fetchData: () => Promise<void>;
   
   // Actions
-  changeOperator: (role: 'super_admin' | 'finance_admin' | 'support_admin') => void;
   
   // Products CRUD
-  addProduct: (data: Partial<Product>) => Promise<void>;
+  addProduct: (data: NovoProdutoUI) => Promise<void>;
   updateProduct: (slug: string, data: Partial<Product>) => Promise<void>;
   deleteProduct: (slug: string) => Promise<void>;
   
@@ -39,28 +76,26 @@ interface BackofficeContextType {
   deletePlan: (slug: string) => Promise<void>;
   
   // Tenants CRUD
-  createTenant: (data: Partial<Tenant>) => Promise<string>;
-  updateTenant: (id: string, data: Partial<Tenant>) => Promise<void>;
-  deleteTenant: (id: string) => Promise<void>;
+  createTenant: (data: Partial<NovoTenant>) => Promise<number>;
+  reprovisionarTenant: (id: number) => Promise<void>;
+  updateTenant: (id: number, data: Partial<Tenant>) => Promise<void>;
+  deleteTenant: (id: number) => Promise<void>;
   
   // Payments CRUD
-  registerPayment: (data: Partial<Payment>) => Promise<void>;
-  deletePayment: (id: string) => Promise<void>;
+  registerPayment: (data: Partial<NovoPagamento>) => Promise<void>;
+  deletePayment: (id: number) => Promise<void>;
   
   // Operators CRUD
   addOperator: (data: Partial<Operator>) => Promise<void>;
-  updateOperator: (id: string, data: Partial<Operator>) => Promise<void>;
-  deleteOperator: (id: string) => Promise<void>;
+  updateOperator: (id: number, data: Partial<Operator>) => Promise<void>;
+  deleteOperator: (id: number) => Promise<void>;
   
-  suspendTenant: (id: string, reason: string) => Promise<void>;
-  reactivateTenant: (id: string) => Promise<void>;
-  cancelTenant: (id: string, reason: string) => Promise<void>;
-  extendTrial: (id: string, days: number) => Promise<void>;
-  changePlan: (id: string, planSlug: string) => Promise<void>;
+  suspendTenant: (id: number, reason: string) => Promise<void>;
+  reactivateTenant: (id: number) => Promise<void>;
+  cancelTenant: (id: number, reason: string) => Promise<void>;
+  extendTrial: (id: number, days: number) => Promise<void>;
+  changePlan: (id: number, planSlug: string) => Promise<void>;
   updateSettings: (data: Partial<PlatformSettings>) => Promise<void>;
-  triggerJob: (jobId: string) => Promise<void>;
-  startImpersonation: (tenantId: string) => void;
-  stopImpersonation: () => void;
 }
 
 const BackofficeContext = createContext<BackofficeContextType | undefined>(undefined);
@@ -82,24 +117,17 @@ export function BackofficeProvider({ children }: { children: React.ReactNode }) 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [operators, setOperators] = useState<Operator[]>([]);
-  const [currentUser, setCurrentUser] = useState<Operator>({
-    id: 'op-01',
-    name: 'António Morais',
-    email: 'a.morais@maelg.ao',
-    role: 'super_admin',
-    avatarUrl: '/src/assets/images/operator_super_admin_1790456679041.jpg',
-    lastAccess: new Date().toISOString(),
-    active: true
-  });
+  const [currentUser, setCurrentUser] = useState<Operator | null>(null);
+  const [sessaoCarregada, setSessaoCarregada] = useState(false);
+  const [precisaBootstrap, setPrecisaBootstrap] = useState(false);
+  const [permissoes, setPermissoes] = useState<Permissao[]>([]);
   const [settings, setSettings] = useState<PlatformSettings>({
     platformName: 'MaelG Control Plane',
     platformUrl: 'https://admin.maelg.ao',
     supportEmail: 'suporte@maelg.ao',
     activeMaintenance: false,
     emailTemplates: { provisioned: '', suspended: '', invoicePending: '' },
-    jobs: []
   });
-  const [impersonatingTenant, setImpersonatingTenant] = useState<Tenant | null>(null);
 
   // Sync html class for theme
   useEffect(() => {
@@ -128,87 +156,140 @@ export function BackofficeProvider({ children }: { children: React.ReactNode }) 
         resSettings,
         resAudits
       ] = await Promise.all([
-        fetch('/api/tenants'),
-        fetch('/api/products'),
-        fetch('/api/plans'),
-        fetch('/api/subscriptions'),
-        fetch('/api/payments'),
-        fetch('/api/operators'),
-        fetch('/api/settings'),
-        fetch('/api/audit_logs')
+        sessao.pedir<Tenant[]>('/tenants'),
+        sessao.pedir<Product[]>('/products'),
+        sessao.pedir<Plan[]>('/plans'),
+        sessao.pedir<Subscription[]>('/subscriptions'),
+        sessao.pedir<Payment[]>('/payments'),
+        sessao.pedir<Operator[]>('/operators'),
+        sessao.pedir<PlatformSettings>('/settings'),
+        sessao.pedir<AuditLog[]>('/audit_logs')
       ]);
 
-      if (resTenants.ok) setTenants(await resTenants.json());
-      if (resProducts.ok) setProducts(await resProducts.json());
-      if (resPlans.ok) setPlans(await resPlans.json());
-      if (resSubscriptions.ok) setSubscriptions(await resSubscriptions.json());
-      if (resPayments.ok) setPayments(await resPayments.json());
-      
-      if (resOperators.ok) {
-        const ops = await resOperators.json();
-        setOperators(ops);
-        // Sync current user role session
-        const currentRole = localStorage.getItem('maelg_current_role') || 'super_admin';
-        const target = ops.find((o: any) => o.role === currentRole);
-        if (target) {
-          setCurrentUser(target);
-        } else if (ops.length > 0) {
-          setCurrentUser(ops[0]);
-        }
-      }
-      
-      if (resSettings.ok) setSettings(await resSettings.json());
-      if (resAudits.ok) setAuditLogs(await resAudits.json());
+      setTenants(resTenants);
+      setProducts(resProducts);
+      setPlans(resPlans);
+      setSubscriptions(resSubscriptions);
+      setPayments(resPayments);
+      setOperators(resOperators);
+      setSettings(resSettings);
+      setAuditLogs(resAudits);
     } catch (e) {
       console.error('Error fetching backend data:', e);
     }
   }, []);
 
-  // Load backend data on Mount
+  // Carrega os dados so depois de haver token: antes disso a plataforma
+  // rejeita os oito pedidos e nao ha nada a mostrar.
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (sessaoCarregada && currentUser) fetchData();
+  }, [sessaoCarregada, currentUser, fetchData]);
 
   // Determine permissions based on role
-  const isSuperAdmin = currentUser.role === 'super_admin';
-  const canManageTenants = currentUser.role === 'super_admin' || currentUser.role === 'support_admin';
-  const canManagePayments = currentUser.role === 'super_admin' || currentUser.role === 'finance_admin';
+  const isSuperAdmin = currentUser?.role === 'super_admin';
+  const canManageTenants =
+    currentUser?.role === 'super_admin' ||
+    currentUser?.role === 'product_admin' ||
+    currentUser?.role === 'support_admin';
+  const canManagePayments =
+    currentUser?.role === 'super_admin' || currentUser?.role === 'finance_admin';
 
-  const changeOperator = useCallback((role: 'super_admin' | 'finance_admin' | 'support_admin') => {
-    const target = operators.find((op) => op.role === role);
-    if (target) {
-      setCurrentUser(target);
-      localStorage.setItem('maelg_current_role', role);
-      showToast(`Sessão alterada para ${target.name} (${role === 'super_admin' ? 'Super Admin' : role === 'finance_admin' ? 'Financeiro' : 'Suporte'})`, 'info');
-    }
-  }, [operators, showToast]);
+  const temPermissao = useCallback(
+    (p: Permissao) => permissoes.includes(p),
+    [permissoes],
+  );
+
+  // --- sessao ---------------------------------------------------------------
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const [s, estado] = await Promise.all([
+        sessao.eu(),
+        sessao.estadoPlataforma(),
+      ]);
+      if (!vivo) return;
+      if (s) {
+        setCurrentUser(s.operador);
+        setPermissoes(s.permissoes);
+      }
+      setPrecisaBootstrap(estado.bootstrapNecessario);
+      setSessaoCarregada(true);
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  const login = useCallback(async (email: string, password: string) => {
+    const r = await sessao.login(email, password);
+    sessao.guardarToken(r.token);
+    setCurrentUser(r.operador);
+    setPermissoes(r.permissoes);
+    setPrecisaBootstrap(false);
+  }, []);
+
+  const logout = useCallback(() => {
+    sessao.limparToken();
+    setCurrentUser(null);
+    setPermissoes([]);
+    // Os dados que ficaram em memoria eram do operador que acabou de sair.
+    setTenants([]);
+    setProducts([]);
+    setPlans([]);
+    setSubscriptions([]);
+    setPayments([]);
+    setOperators([]);
+    setAuditLogs([]);
+  }, []);
 
   // --- CRUD Actions calling Backend REST Endpoints (100% Real, No Mock) ---
 
-  const addProduct = useCallback(async (data: Partial<Product>) => {
-    try {
-      const response = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      if (!response.ok) throw new Error('Falha ao adicionar produto no backend.');
-      showToast(`Produto "${data.name}" criado com administrador associado no servidor!`, 'success');
-      await fetchData();
-    } catch (e: any) {
-      showToast(e.message, 'error');
-    }
-  }, [fetchData, showToast]);
+  /**
+   * Cria um produto com o primeiro plano.
+   *
+   * A API espera os nomes em portugues (`nome`, `versao`) e exige pelo menos
+   * um plano — um produto sem plano nao e contratavel. A traducao do que a UI
+   * tem para o que a API quer fica aqui, e nao espalhada pelas paginas.
+   */
+  const addProduct = useCallback(
+    async (data: NovoProdutoUI) => {
+      const planos = [data.primeiroPlano];
+      try {
+        await sessao.pedir('/products', {
+          method: 'POST',
+          body: JSON.stringify({
+            slug: data.slug,
+            nome: data.name,
+            descricao: data.description,
+            versao: data.version,
+            apiUrl: data.apiUrl,
+            produtoChave: data.produtoChave,
+            produtoSegredo: data.produtoSegredo,
+            planos,
+          }),
+        });
+        showToast(`Produto "${data.name}" criado.`, 'success');
+        await fetchData();
+      } catch (e: any) {
+        showToast(e.message, 'error');
+      }
+    },
+    [fetchData, showToast],
+  );
 
   const updateProduct = useCallback(async (slug: string, data: Partial<Product>) => {
     try {
-      const response = await fetch(`/api/products/${slug}`, {
+      await sessao.pedir(`/products/${slug}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+        body: JSON.stringify({
+          nome: data.name,
+          descricao: data.description,
+          versao: data.version,
+          apiUrl: data.apiUrl,
+          status: data.status,
+        }),
       });
-      if (!response.ok) throw new Error('Falha ao atualizar produto no backend.');
-      showToast(`Produto atualizado com sucesso no servidor!`, 'success');
+      showToast(`Produto actualizado.`, 'success');
       await fetchData();
     } catch (e: any) {
       showToast(e.message, 'error');
@@ -217,9 +298,8 @@ export function BackofficeProvider({ children }: { children: React.ReactNode }) 
 
   const deleteProduct = useCallback(async (slug: string) => {
     try {
-      const response = await fetch(`/api/products/${slug}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Falha ao remover produto do backend.');
-      showToast(`Produto removido com sucesso no servidor!`, 'warning');
+      await sessao.pedir(`/products/${slug}`, { method: 'DELETE' });
+      showToast(`Produto removido.`, 'warning');
       await fetchData();
     } catch (e: any) {
       showToast(e.message, 'error');
@@ -228,13 +308,11 @@ export function BackofficeProvider({ children }: { children: React.ReactNode }) 
 
   const addPlan = useCallback(async (data: Partial<Plan>) => {
     try {
-      const response = await fetch('/api/plans', {
+      await sessao.pedir('/plans', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      if (!response.ok) throw new Error('Falha ao criar plano no backend.');
-      showToast(`Plano "${data.name}" criado com sucesso no servidor!`, 'success');
+      showToast(`Plano "${data.nome}" criado.`, 'success');
       await fetchData();
     } catch (e: any) {
       showToast(e.message, 'error');
@@ -243,13 +321,11 @@ export function BackofficeProvider({ children }: { children: React.ReactNode }) 
 
   const updatePlan = useCallback(async (slug: string, data: Partial<Plan>) => {
     try {
-      const response = await fetch(`/api/plans/${slug}`, {
+      await sessao.pedir(`/plans/${slug}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      if (!response.ok) throw new Error('Falha ao atualizar plano no backend.');
-      showToast(`Plano atualizado com sucesso no servidor!`, 'success');
+      showToast(`Plano actualizado.`, 'success');
       await fetchData();
     } catch (e: any) {
       showToast(e.message, 'error');
@@ -258,97 +334,122 @@ export function BackofficeProvider({ children }: { children: React.ReactNode }) 
 
   const deletePlan = useCallback(async (slug: string) => {
     try {
-      const response = await fetch(`/api/plans/${slug}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Falha ao remover plano do servidor.');
-      showToast(`Plano removido do servidor com sucesso!`, 'warning');
+      await sessao.pedir(`/plans/${slug}`, { method: 'DELETE' });
+      showToast(`Plano removido.`, 'warning');
       await fetchData();
     } catch (e: any) {
       showToast(e.message, 'error');
     }
   }, [fetchData, showToast]);
 
-  // Core School + Admin Provisioning
-  const createTenant = useCallback(async (data: Partial<Tenant>): Promise<string> => {
+  /**
+   * Cria a inscricao (tenant). O backend e' que chama a API do produto: se a
+   * escola nao nascer la, o tenant vem de volta em `erro` e ha `reprovisionar`
+   * para tentar outra vez. Nao ha defaults inventados -- o que faltar, o
+   * formulario tem de pedir.
+   */
+  const createTenant = useCallback(async (data: Partial<NovoTenant>): Promise<number> => {
     try {
-      const response = await fetch('/api/provisionar', {
+      const resData = await sessao.pedir<{ id: number; provisionamento: string; provisionamentoErro: string | null }>(
+        '/tenants',
+        {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          escola_nome: data.name,
-          admin_nome: data.contactName,
-          admin_email: data.contactEmail,
-          admin_password: data.adminPassword || 'MaelG@2026xY',
-          escola_tipo: 'privada',
-          escola_designacao: 'complexo_escolar',
-          escola_regime_ensino: 'geral',
-          escola_endereco: data.city || 'Luanda',
-          escola_contacto_telefone: data.contactPhone || '',
-          escola_contacto_email: data.contactEmail || '',
-          nif: data.nif || '5401928123',
-          province: data.province || 'Luanda',
-          planSlug: data.planSlug || 'maelgest-basic',
-          notes: data.notes
-        })
-      });
-      const resData = await response.json();
-      if (!response.ok) {
-        throw new Error(resData.erro || 'Falha ao provisionar escola e primeiro administrador.');
+          nome: data.nome,
+          produtoSlug: data.produtoSlug,
+          planoId: data.planoId,
+          nif: data.nif,
+          tipo: data.tipo,
+          designacao: data.designacao,
+          regimeEnsino: data.regimeEnsino,
+          contactEmail: data.contactEmail,
+          contactPhone: data.contactPhone,
+          province: data.province,
+          city: data.city,
+          firstAdminName: data.firstAdminName,
+          firstAdminEmail: data.firstAdminEmail,
+          firstAdminPhone: data.firstAdminPhone,
+          trialDias: data.trialDias,
+          notas: data.notas,
+        }),
+        },
+      );
+
+      if (resData.provisionamento === 'erro') {
+        showToast(
+          `Inscricao criada, mas a escola nao respondeu: ${resData.provisionamentoErro || 'erro desconhecido'}`,
+          'warning',
+        );
+      } else {
+        showToast(`Inscricao criada e escola confirmada no produto.`, 'success');
       }
-      showToast(`Ambiente de escola criado com primeiro diretor associado!`, 'success');
       await fetchData();
-      return `ten-${resData.escola_id}`;
+      return resData.id;
     } catch (e: any) {
       showToast(e.message, 'error');
       throw e;
     }
   }, [fetchData, showToast]);
 
-  const updateTenant = useCallback(async (id: string, data: Partial<Tenant>) => {
+  /** Tenta de novo a criacao da escola depois de um `provisionamento: erro`. */
+  const reprovisionarTenant = useCallback(async (id: number) => {
     try {
-      const response = await fetch(`/api/tenants/${id}`, {
+      const resData = await sessao.pedir<{ provisionamento: string; provisionamentoErro: string | null }>(
+        `/tenants/${id}/aprovisionar`,
+        { method: 'POST' },
+      );
+      showToast(
+        resData.provisionamento === 'provisionado'
+          ? 'Escola confirmada no produto.'
+          : `O produto ainda nao confirmou: ${resData.provisionamentoErro || ''}`,
+        resData.provisionamento === 'provisionado' ? 'success' : 'warning',
+      );
+      await fetchData();
+    } catch (e: any) {
+      showToast(e.message, 'error');
+    }
+  }, [fetchData, showToast]);
+
+  const updateTenant = useCallback(async (id: number, data: Partial<Tenant>) => {
+    try {
+      await sessao.pedir(`/tenants/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      if (!response.ok) throw new Error('Erro ao atualizar dados do tenant.');
-      showToast(`Tenant atualizado com sucesso no servidor!`, 'success');
+      showToast(`Tenant actualizado.`, 'success');
       await fetchData();
     } catch (e: any) {
       showToast(e.message, 'error');
     }
   }, [fetchData, showToast]);
 
-  const deleteTenant = useCallback(async (id: string) => {
+  const deleteTenant = useCallback(async (id: number) => {
     try {
-      const response = await fetch(`/api/tenants/${id}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Erro ao remover tenant do servidor.');
-      showToast(`Tenant removido com sucesso do servidor!`, 'warning');
+      await sessao.pedir(`/tenants/${id}`, { method: 'DELETE' });
+      showToast(`Tenant removido.`, 'warning');
       await fetchData();
     } catch (e: any) {
       showToast(e.message, 'error');
     }
   }, [fetchData, showToast]);
 
-  const registerPayment = useCallback(async (data: Partial<Payment>) => {
+  const registerPayment = useCallback(async (data: Partial<NovoPagamento>) => {
     try {
-      const response = await fetch('/api/payments', {
+      await sessao.pedir('/payments', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      if (!response.ok) throw new Error('Erro ao registar pagamento no servidor.');
-      showToast(`Documento de fatura gerido com sucesso!`, 'success');
+      showToast('Pagamento registado.', 'success');
       await fetchData();
     } catch (e: any) {
       showToast(e.message, 'error');
     }
   }, [fetchData, showToast]);
 
-  const deletePayment = useCallback(async (id: string) => {
+  const deletePayment = useCallback(async (id: number) => {
     try {
-      const response = await fetch(`/api/payments/${id}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Erro ao remover pagamento do servidor.');
-      showToast(`Fatura removida do servidor!`, 'warning');
+      await sessao.pedir(`/payments/${id}`, { method: 'DELETE' });
+      showToast(`Pagamento removido.`, 'warning');
       await fetchData();
     } catch (e: any) {
       showToast(e.message, 'error');
@@ -357,39 +458,34 @@ export function BackofficeProvider({ children }: { children: React.ReactNode }) 
 
   const addOperator = useCallback(async (data: Partial<Operator>) => {
     try {
-      const response = await fetch('/api/operators', {
+      await sessao.pedir('/operators', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      if (!response.ok) throw new Error('Erro ao criar operador no servidor.');
-      showToast(`Operador adicionado com sucesso ao servidor!`, 'success');
+      showToast(`Operador adicionado.`, 'success');
       await fetchData();
     } catch (e: any) {
       showToast(e.message, 'error');
     }
   }, [fetchData, showToast]);
 
-  const updateOperator = useCallback(async (id: string, data: Partial<Operator>) => {
+  const updateOperator = useCallback(async (id: number, data: Partial<Operator>) => {
     try {
-      const response = await fetch(`/api/operators/${id}`, {
+      await sessao.pedir(`/operators/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      if (!response.ok) throw new Error('Erro ao atualizar operador no servidor.');
-      showToast(`Operador atualizado com sucesso no servidor!`, 'success');
+      showToast(`Operador actualizado.`, 'success');
       await fetchData();
     } catch (e: any) {
       showToast(e.message, 'error');
     }
   }, [fetchData, showToast]);
 
-  const deleteOperator = useCallback(async (id: string) => {
+  const deleteOperator = useCallback(async (id: number) => {
     try {
-      const response = await fetch(`/api/operators/${id}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Erro ao remover operador.');
-      showToast(`Operador removido com sucesso do servidor!`, 'warning');
+      await sessao.pedir(`/operators/${id}`, { method: 'DELETE' });
+      showToast(`Operador removido.`, 'warning');
       await fetchData();
     } catch (e: any) {
       showToast(e.message, 'error');
@@ -397,11 +493,11 @@ export function BackofficeProvider({ children }: { children: React.ReactNode }) 
   }, [fetchData, showToast]);
 
   // Specific state change workflows calling updateTenant endpoints
-  const suspendTenant = useCallback(async (id: string, reason: string) => {
-    await updateTenant(id, { status: 'suspended', notes: reason });
+  const suspendTenant = useCallback(async (id: number, reason: string) => {
+    await updateTenant(id, { status: 'suspended', notas: reason });
   }, [updateTenant]);
 
-  const reactivateTenant = useCallback(async (id: string) => {
+  const reactivateTenant = useCallback(async (id: number) => {
     const target = tenants.find(t => t.id === id);
     if (target) {
       const hasTrialRemaining = target.trialEndsAt && new Date(target.trialEndsAt).getTime() > Date.now();
@@ -410,11 +506,11 @@ export function BackofficeProvider({ children }: { children: React.ReactNode }) 
     }
   }, [tenants, updateTenant]);
 
-  const cancelTenant = useCallback(async (id: string, reason: string) => {
-    await updateTenant(id, { status: 'cancelled', notes: reason });
+  const cancelTenant = useCallback(async (id: number, reason: string) => {
+    await updateTenant(id, { status: 'cancelled', notas: reason });
   }, [updateTenant]);
 
-  const extendTrial = useCallback(async (id: string, days: number) => {
+  const extendTrial = useCallback(async (id: number, days: number) => {
     const target = tenants.find(t => t.id === id);
     if (target) {
       const currentEnds = target.trialEndsAt ? new Date(target.trialEndsAt) : new Date();
@@ -423,72 +519,29 @@ export function BackofficeProvider({ children }: { children: React.ReactNode }) 
     }
   }, [tenants, updateTenant]);
 
-  const changePlan = useCallback(async (id: string, planSlug: string) => {
-    await updateTenant(id, { planSlug });
+  const changePlan = useCallback(async (id: number, planSlug: string) => {
+    await updateTenant(id, { planoNome: planSlug });
   }, [updateTenant]);
 
   const updateSettings = useCallback(async (updated: Partial<PlatformSettings>) => {
     try {
-      const response = await fetch('/api/settings', {
+      await sessao.pedir('/settings', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
       });
-      if (!response.ok) throw new Error('Erro ao gravar configurações no servidor.');
-      showToast('Configurações atualizadas com sucesso no servidor!', 'success');
+      showToast('Configurações actualizadas.', 'success');
       await fetchData();
     } catch (e: any) {
       showToast(e.message, 'error');
     }
   }, [fetchData, showToast]);
 
-  const triggerJob = useCallback(async (jobId: string) => {
-    try {
-      showToast('A executar tarefa agendada no servidor...', 'info');
-      // Simulate wait, trigger on server
-      setTimeout(async () => {
-        const response = await fetch('/api/settings');
-        if (response.ok) {
-          const currentSettings = await response.json() as PlatformSettings;
-          const updatedJobs = currentSettings.jobs.map(j => {
-            if (j.id === jobId) {
-              return {
-                ...j,
-                status: 'success' as const,
-                lastRun: new Date().toISOString()
-              };
-            }
-            return j;
-          });
-          await updateSettings({ jobs: updatedJobs });
-        }
-      }, 1000);
-    } catch (e: any) {
-      showToast(e.message, 'error');
-    }
-  }, [updateSettings, showToast]);
-
-  const startImpersonation = useCallback((tenantId: string) => {
-    const target = tenants.find(t => t.id === tenantId);
-    if (target) {
-      setImpersonatingTenant(target);
-      showToast(`Sessão de suporte iniciada para ${target.name}. Modo leitura activo.`, 'info');
-    }
-  }, [tenants, showToast]);
-
-  const stopImpersonation = useCallback(() => {
-    if (impersonatingTenant) {
-      showToast(`Sessão de suporte para ${impersonatingTenant.name} terminada.`, 'success');
-      setImpersonatingTenant(null);
-    }
-  }, [impersonatingTenant, showToast]);
-
   return (
     <BackofficeContext.Provider
       value={{
         theme,
         toggleTheme,
-        
+
         products,
         plans,
         tenants,
@@ -497,15 +550,19 @@ export function BackofficeProvider({ children }: { children: React.ReactNode }) 
         auditLogs,
         operators,
         currentUser,
+        sessaoCarregada,
+        precisaBootstrap,
+        permissoes,
+        login,
+        logout,
+        temPermissao,
         settings,
-        impersonatingTenant,
         
         canManageTenants,
         canManagePayments,
         isSuperAdmin,
         
         fetchData,
-        changeOperator,
         
         addProduct,
         updateProduct,
@@ -516,6 +573,7 @@ export function BackofficeProvider({ children }: { children: React.ReactNode }) 
         deletePlan,
         
         createTenant,
+        reprovisionarTenant,
         updateTenant,
         deleteTenant,
         
@@ -532,9 +590,6 @@ export function BackofficeProvider({ children }: { children: React.ReactNode }) 
         extendTrial,
         changePlan,
         updateSettings,
-        triggerJob,
-        startImpersonation,
-        stopImpersonation,
       }}
     >
       {children}

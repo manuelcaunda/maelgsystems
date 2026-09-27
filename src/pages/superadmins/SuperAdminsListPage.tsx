@@ -5,7 +5,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { formatDateTime } from '../../utils/formatters';
-import { ShieldCheck, Eye, Sparkles, UserCheck, Plus, Trash2, Edit, X, ShieldAlert } from 'lucide-react';
+import { ShieldCheck, Sparkles, Plus, Trash2, Edit, X } from 'lucide-react';
 import { PATHS } from '../../router/paths';
 
 export function SuperAdminsListPage() {
@@ -19,12 +19,11 @@ export function SuperAdminsListPage() {
     name: '',
     email: '',
     role: 'support_admin' as 'super_admin' | 'finance_admin' | 'support_admin',
-    avatarUrl: '/src/assets/images/operator_suporte_1790456700351.jpg',
     active: true
   });
 
   // State for Delete confirmation
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const handleOpenCreate = () => {
     setEditingOperator(null);
@@ -32,8 +31,7 @@ export function SuperAdminsListPage() {
       name: '',
       email: '',
       role: 'support_admin',
-      avatarUrl: '/src/assets/images/operator_suporte_1790456700351.jpg',
-      active: true
+        active: true
     });
     setIsOpen(true);
   };
@@ -44,13 +42,12 @@ export function SuperAdminsListPage() {
       name: op.name,
       email: op.email,
       role: op.role,
-      avatarUrl: op.avatarUrl || '/src/assets/images/operator_suporte_1790456700351.jpg',
       active: op.active !== undefined ? op.active : true
     });
     setIsOpen(true);
   };
 
-  const handleDeleteClick = (id: string) => {
+  const handleDeleteClick = (id: number) => {
     setDeleteId(id);
   };
 
@@ -128,7 +125,7 @@ export function SuperAdminsListPage() {
               <div className="flex items-center justify-between border-b border-slate-900 pb-4 mb-4">
                 <div className="flex items-center gap-4">
                   <img
-                    src={op.avatarUrl}
+                    src={''}
                     alt={op.name}
                     referrerPolicy="no-referrer"
                     className="w-12 h-12 rounded-full object-cover border border-slate-800"
@@ -248,17 +245,6 @@ export function SuperAdminsListPage() {
                   <option value="finance_admin">Financeiro (AGT & Faturação)</option>
                   <option value="support_admin">Suporte Técnico (Somente Leitura + Impersonate)</option>
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-slate-400 dark:text-slate-500 mb-1 font-mono uppercase tracking-wider text-[10px]">Foto de Perfil (Avatar URL)</label>
-                <input
-                  type="text"
-                  placeholder="URL do Avatar"
-                  value={formData.avatarUrl}
-                  onChange={(e) => setFormData({ ...formData, avatarUrl: e.target.value })}
-                  className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-800 dark:border-slate-300 rounded-lg p-2 text-white dark:text-slate-900 focus:outline-none focus:border-amber-500 font-mono"
-                />
               </div>
 
               <div className="flex items-center gap-2 pt-2">

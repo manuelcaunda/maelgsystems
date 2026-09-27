@@ -6,27 +6,7 @@ import { Card } from '../../components/ui/Card';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
 import { formatAOA } from '../../utils/formatters';
-import {
-  GraduationCap,
-  Users,
-  Terminal,
-  Activity,
-  ChevronRight,
-  TrendingUp,
-  KeyRound,
-  Network,
-  Plus,
-  Trash2,
-  Edit,
-  User,
-  Mail,
-  Phone,
-  Link,
-  Shield,
-  FileCode,
-  Sparkles,
-  X
-} from 'lucide-react';
+import { GraduationCap, Activity, ChevronRight, Network, Plus, Trash2, Edit, Globe, X } from 'lucide-react';
 
 export function ProductsListPage() {
   const navigate = useNavigate();
@@ -35,54 +15,62 @@ export function ProductsListPage() {
   // State for Create/Edit Modal
   const [isOpen, setIsOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
+  // Espelha as colunas de `produto`, mais a credencial de acesso. A credencial
+  // so se escreve ao criar: depois de criada, nao ha endpoint que a mude.
   const [formData, setFormData] = useState({
     name: '',
     slug: '',
     description: '',
-    iconName: 'Terminal',
-    apiEndpoint: '',
-    token: '',
-    status: 'active' as 'active' | 'beta' | 'inactive',
-    adminName: '',
-    adminEmail: '',
-    adminPhone: '',
-  });
+    version: '',
+    apiUrl: '',
+    produtoChave: '',
+    produtoSegredo: '',
+    status: 'active' as 'active' | 'inactive' | 'deprecated' });
+
+  // O primeiro plano do produto. A API nao aceita um produto sem nenhum.
+  const [plano, setPlano] = useState({
+    codigo: '',
+    nome: '',
+    priceAoa: '',
+    maxStudents: '0',
+    maxUsers: '0',
+    maxStorageGb: '0' });
 
   // State for Delete Confirmation
   const [deleteSlug, setDeleteSlug] = useState<string | null>(null);
 
   const handleOpenCreate = () => {
     setEditingProduct(null);
+    // A credencial nao e gerada aqui: o operador escreve-a. Um segredo criado
+    // no browser e um segredo que ja passou pelo browser. A URL do produto
+    // tambem se escreve: um `localhost` pre-preenchido ia para producao sem
+    // ninguem dar por isso.
     setFormData({
       name: '',
       slug: '',
       description: '',
-      iconName: 'Terminal',
-      apiEndpoint: 'https://api.maelg.ao/internal/v1',
-      token: `tok_${Math.random().toString(36).substring(2, 12)}`,
-      status: 'active',
-      adminName: '',
-      adminEmail: '',
-      adminPhone: '',
-    });
+      version: '',
+      apiUrl: '',
+      produtoChave: '',
+      produtoSegredo: '',
+      status: 'active' });
+    setPlano({ codigo: '', nome: '', priceAoa: '', maxStudents: '0', maxUsers: '0', maxStorageGb: '0' });
     setIsOpen(true);
   };
 
   const handleOpenEdit = (p: any, e: React.MouseEvent) => {
     e.stopPropagation(); // prevent card navigation
     setEditingProduct(p);
+    // a credencial nao volta do servidor: nao ha endpoint que a devolva
     setFormData({
       name: p.name,
       slug: p.slug,
-      description: p.description,
-      iconName: p.iconName || 'Terminal',
-      apiEndpoint: p.apiEndpoint || '',
-      token: p.token || '',
-      status: p.status || 'active',
-      adminName: p.adminName || '',
-      adminEmail: p.adminEmail || '',
-      adminPhone: p.adminPhone || '',
-    });
+      description: p.description ?? '',
+      version: p.version || '',
+      apiUrl: p.apiUrl || '',
+      produtoChave: '',
+      produtoSegredo: '',
+      status: p.status || 'active' });
     setIsOpen(true);
   };
 
@@ -105,7 +93,19 @@ export function ProductsListPage() {
     if (editingProduct) {
       updateProduct(editingProduct.slug, formData);
     } else {
-      addProduct(formData);
+      // criar: a credencial e o primeiro plano sao obrigatorios
+      if (!formData.produtoChave || !formData.produtoSegredo || !formData.apiUrl) return;
+      if (!plano.codigo || !plano.nome || !plano.priceAoa) return;
+      addProduct({
+        ...formData,
+        primeiroPlano: {
+          codigo: plano.codigo,
+          nome: plano.nome,
+          priceAoa: Number(plano.priceAoa),
+          maxStudents: Number(plano.maxStudents),
+          maxUsers: Number(plano.maxUsers),
+          maxStorageGb: Number(plano.maxStorageGb),
+          isActive: true } });
     }
     setIsOpen(false);
   };
@@ -129,7 +129,13 @@ export function ProductsListPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {products.map((p) => {
           // Count active tenants in this product
-          const count = tenants.filter(t => t.productSlug === p.slug && t.status === 'active').length;
+          const doProduto = tenants.filter((t) => t.produtoSlug === p.slug);
+          const count = doProduto.filter((t) => t.status === 'active').length;
+          // Receita real: soma das assinaturas activas deste produto. Vem dos
+          // tenants que ja temos em memoria, nao de um campo guardado no produto.
+          const mrr = doProduto
+            .filter((t) => t.status === 'active')
+            .reduce((total, t) => total + (t.planoPrecoAoa ?? 0), 0);
           
           return (
             <Card
@@ -174,34 +180,21 @@ export function ProductsListPage() {
                       /{p.slug}
                     </span>
                   </h3>
-                  <p className="text-xs text-slate-400 dark:text-slate-400 leading-relaxed">{p.description}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-400 leading-relaxed">{''}</p>
                 </div>
 
-                {/* Associated Product Administrator */}
+                {/* Onde a API do produto vive, e que versao esta em producao */}
                 <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/60 dark:bg-slate-950/40 space-y-1.5">
                   <div className="flex items-center gap-1.5 text-[10px] text-amber-500 font-mono uppercase tracking-wider">
-                    <User className="w-3.5 h-3.5" />
-                    Administrador Técnico
+                    <Globe className="w-3.5 h-3.5" />
+                    API do Produto
                   </div>
-                  <div className="text-xs font-semibold text-slate-200">
-                    {p.adminName || 'Não atribuído'}
+                  <div className="text-xs font-mono text-slate-200 break-all">
+                    {p.apiUrl || 'Sem URL'}
                   </div>
-                  {(p.adminEmail || p.adminPhone) && (
-                    <div className="flex flex-col gap-0.5 text-[10px] text-slate-400 font-mono">
-                      {p.adminEmail && (
-                        <span className="flex items-center gap-1.5">
-                          <Mail className="w-3 h-3 text-slate-500" />
-                          {p.adminEmail}
-                        </span>
-                      )}
-                      {p.adminPhone && (
-                        <span className="flex items-center gap-1.5">
-                          <Phone className="w-3 h-3 text-slate-500" />
-                          {p.adminPhone}
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    versão {p.version || '—'}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 pt-2 font-mono text-[11px] border-t border-slate-900/60 dark:border-slate-800">
@@ -211,7 +204,7 @@ export function ProductsListPage() {
                   </div>
                   <div>
                     <span className="text-slate-500 block">Receita MRR:</span>
-                    <strong className="text-emerald-400 font-semibold">{formatAOA(p.mrr)}</strong>
+                    <strong className="text-emerald-400 font-semibold">{formatAOA(mrr)}</strong>
                   </div>
                 </div>
               </div>
@@ -300,35 +293,49 @@ export function ProductsListPage() {
                   <input
                     type="url"
                     required
-                    placeholder="https://api.maelrh.ao/internal/v1"
-                    value={formData.apiEndpoint}
-                    onChange={(e) => setFormData({ ...formData, apiEndpoint: e.target.value })}
+                    placeholder="http://localhost:8100"
+                    value={formData.apiUrl}
+                    onChange={(e) => setFormData({ ...formData, apiUrl: e.target.value })}
                     className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-800 dark:border-slate-300 rounded-lg p-2 text-white dark:text-slate-900 focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 dark:text-slate-500 mb-1 font-mono uppercase tracking-wider text-[10px]">Chave API de Segurança</label>
+                  <label className="block text-slate-400 dark:text-slate-500 mb-1 font-mono uppercase tracking-wider text-[10px]">Chave do Produto</label>
                   <input
                     type="text"
-                    required
-                    placeholder="mrh_beta_tok_..."
-                    value={formData.token}
-                    onChange={(e) => setFormData({ ...formData, token: e.target.value })}
+                    required={!editingProduct}
+                    placeholder="prod-maelgest-local"
+                    value={formData.produtoChave}
+                    onChange={(e) => setFormData({ ...formData, produtoChave: e.target.value })}
                     className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-800 dark:border-slate-300 rounded-lg p-2 text-white dark:text-slate-900 focus:outline-none focus:border-amber-500 font-mono"
                   />
+                </div>
+                <div>
+                  <label className="block text-slate-400 dark:text-slate-500 mb-1 font-mono uppercase tracking-wider text-[10px]">Segredo (mín. 16 caracteres)</label>
+                  <input
+                    type="password"
+                    required={!editingProduct}
+                    placeholder={editingProduct ? 'não é possível alterar depois' : 'mínimo 16 caracteres'}
+                    value={formData.produtoSegredo}
+                    onChange={(e) => setFormData({ ...formData, produtoSegredo: e.target.value })}
+                    className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-800 dark:border-slate-300 rounded-lg p-2 text-white dark:text-slate-900 focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                  <p className="mt-1 text-[10px] text-slate-500 font-mono">
+                    Fica cifrado em AES-256-GCM na base. Esta é a mesma credencial
+                    que o produto usa para nos chamar.
+                  </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-slate-400 dark:text-slate-500 mb-1 font-mono uppercase tracking-wider text-[10px]">Ícone Lucide</label>
+                  <label className="block text-slate-400 dark:text-slate-500 mb-1 font-mono uppercase tracking-wider text-[10px]">Versão</label>
                   <input
                     type="text"
-                    required
-                    placeholder="Users"
-                    value={formData.iconName}
-                    onChange={(e) => setFormData({ ...formData, iconName: e.target.value })}
-                    className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-800 dark:border-slate-300 rounded-lg p-2 text-white dark:text-slate-900 focus:outline-none focus:border-amber-500"
+                    placeholder="1.0.0"
+                    value={formData.version}
+                    onChange={(e) => setFormData({ ...formData, version: e.target.value })}
+                    className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-800 dark:border-slate-300 rounded-lg p-2 text-white dark:text-slate-900 focus:outline-none focus:border-amber-500 font-mono"
                   />
                 </div>
                 <div>
@@ -339,60 +346,81 @@ export function ProductsListPage() {
                     className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-800 dark:border-slate-300 rounded-lg p-2 text-white dark:text-slate-900 focus:outline-none focus:border-amber-500"
                   >
                     <option value="active">Ativo (Produção)</option>
-                    <option value="beta">Fase Beta</option>
-                    <option value="inactive">Inativo / Descontinuado</option>
+                    <option value="inactive">Inativo</option>
+                    <option value="deprecated">Descontinuado</option>
                   </select>
                 </div>
               </div>
 
-              {/* PRODUCT ADMINISTRATOR CARD CREATION */}
-              <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 space-y-3">
-                <h4 className="font-bold text-amber-500 flex items-center gap-2">
-                  <Shield className="w-4 h-4" />
-                  Administrador Técnico Associado
-                </h4>
-                <p className="text-[10px] text-slate-400">
-                  Defina o responsável de engenharia por este Data Plane do produto no ecossistema MaelG Systems.
-                </p>
+              {/* O primeiro plano. A API nao aceita um produto sem planos. */}
+              {!editingProduct && (
+                <div className="p-4 rounded-xl border border-slate-700 bg-slate-900/40 space-y-3">
+                  <h4 className="font-bold text-slate-300">Primeiro plano</h4>
+                  <p className="text-[10px] text-slate-500 font-mono">
+                    Um produto sem plano nao e contratavel. Os restantes planos
+                    criam-se depois, em Planos.
+                  </p>
 
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-slate-400 mb-0.5 text-[10px] font-mono uppercase">Nome Completo</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Sr. Yuri Francisco"
-                      value={formData.adminName}
-                      onChange={(e) => setFormData({ ...formData, adminName: e.target.value })}
-                      className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-800 dark:border-slate-300 rounded-lg p-2 text-white dark:text-slate-900 focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-slate-400 mb-0.5 text-[10px] font-mono uppercase">E-mail Profissional</label>
-                      <input
-                        type="email"
-                        required
-                        placeholder="y.francisco@maelg.ao"
-                        value={formData.adminEmail}
-                        onChange={(e) => setFormData({ ...formData, adminEmail: e.target.value })}
-                        className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-800 dark:border-slate-300 rounded-lg p-2 text-white dark:text-slate-900 focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-400 mb-0.5 text-[10px] font-mono uppercase">Contacto Telefónico</label>
+                      <label className="block text-slate-400 dark:text-slate-500 mb-1 font-mono uppercase tracking-wider text-[10px]">Código</label>
                       <input
                         type="text"
                         required
-                        placeholder="+244 934 555 666"
-                        value={formData.adminPhone}
-                        onChange={(e) => setFormData({ ...formData, adminPhone: e.target.value })}
+                        placeholder="basico"
+                        value={plano.codigo}
+                        onChange={(e) => setPlano({ ...plano, codigo: e.target.value })}
+                        className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-800 dark:border-slate-300 rounded-lg p-2 text-white dark:text-slate-900 focus:outline-none focus:border-amber-500 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 dark:text-slate-500 mb-1 font-mono uppercase tracking-wider text-[10px]">Nome</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Básico"
+                        value={plano.nome}
+                        onChange={(e) => setPlano({ ...plano, nome: e.target.value })}
                         className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-800 dark:border-slate-300 rounded-lg p-2 text-white dark:text-slate-900 focus:outline-none focus:border-amber-500"
                       />
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-slate-400 dark:text-slate-500 mb-1 font-mono uppercase tracking-wider text-[10px]">Preço (AOA)</label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        step="0.01"
+                        value={plano.priceAoa}
+                        onChange={(e) => setPlano({ ...plano, priceAoa: e.target.value })}
+                        className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-800 dark:border-slate-300 rounded-lg p-2 text-white dark:text-slate-900 focus:outline-none focus:border-amber-500 font-mono"
+                      />
+                    </div>
+                    {([
+                      ['maxStudents', 'Alunos'],
+                      ['maxUsers', 'Utilizadores'],
+                      ['maxStorageGb', 'Armazen. (GB)'],
+                    ] as const).map(([campo, rotulo]) => (
+                      <div key={campo}>
+                        <label className="block text-slate-400 dark:text-slate-500 mb-1 font-mono uppercase tracking-wider text-[10px]">{rotulo}</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={plano[campo]}
+                          onChange={(e) => setPlano({ ...plano, [campo]: e.target.value })}
+                          className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-800 dark:border-slate-300 rounded-lg p-2 text-white dark:text-slate-900 focus:outline-none focus:border-amber-500 font-mono"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-mono">
+                    0 = ilimitado.
+                  </p>
                 </div>
-              </div>
+              )}
 
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-800 dark:border-slate-100">
                 <Button variant="ghost" onClick={() => setIsOpen(false)} type="button">

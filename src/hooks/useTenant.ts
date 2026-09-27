@@ -10,7 +10,7 @@ export function useTenant() {
   const navigate = useNavigate();
   const { showToast } = useToast();
 
-  const tenant = tenants.find((t) => t.id === id);
+  const tenant = tenants.find((t) => String(t.id) === id);
 
   useEffect(() => {
     if (id && !tenant) {

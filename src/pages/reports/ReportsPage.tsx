@@ -2,7 +2,7 @@ import { useBackoffice } from '../../context/BackofficeContext';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card } from '../../components/ui/Card';
 import { formatAOA } from '../../utils/formatters';
-import { TrendingUp, Users, DollarSign, MapPin, Award, Globe } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 
 export function ReportsPage() {
   const { tenants, products, plans } = useBackoffice();
@@ -10,17 +10,21 @@ export function ReportsPage() {
   // Computations
   const activeTenants = tenants.filter(t => t.status === 'active');
   const trialTenants = tenants.filter(t => t.status === 'trial');
-  const suspendedTenants = tenants.filter(t => t.status === 'suspended');
 
-  const totalMrr = activeTenants.reduce((sum, t) => {
-    const plan = plans.find(p => p.slug === t.planSlug);
-    return sum + (plan?.price || 0);
-  }, 0);
+  // O MRR e' a soma das assinaturas activas. Nao ha um campo `mrr` no
+  // produto: quem fatura e' a assinatura de cada tenant.
+  const mrrPorProduto = (slug: string) =>
+    activeTenants
+      .filter((t) => t.produtoSlug === slug)
+      .reduce((sum, t) => sum + (t.planoPrecoAoa ?? 0), 0);
+
+  const totalMrr = activeTenants.reduce((sum, t) => sum + (t.planoPrecoAoa ?? 0), 0);
 
   // Group by provinces
   const provinceCounts: { [key: string]: number } = {};
   tenants.forEach(t => {
-    provinceCounts[t.province] = (provinceCounts[t.province] || 0) + 1;
+    const chave = t.province ?? 'Desconhecida';
+    provinceCounts[chave] = (provinceCounts[chave] || 0) + 1;
   });
 
   const sortedProvinces = Object.entries(provinceCounts)
@@ -30,11 +34,11 @@ export function ReportsPage() {
   // Top active tenants list by price
   const topTenants = activeTenants
     .map(t => {
-      const plan = plans.find(p => p.slug === t.planSlug);
+      const plan = plans.find(p => p.codigo === (t.planoNome ?? ''));
       return {
         ...t,
-        price: plan?.price || 0,
-        planName: plan?.name || t.planSlug
+        price: plan?.priceAoa || 0,
+        planName: plan?.nome || (t.planoNome ?? '')
       };
     })
     .sort((a, b) => b.price - a.price)
@@ -78,12 +82,13 @@ export function ReportsPage() {
 
           <div className="space-y-4 pt-1 text-xs">
             {products.map((p) => {
-              const pct = totalMrr > 0 ? (p.mrr / totalMrr) * 100 : 0;
+              const mrr = mrrPorProduto(p.slug);
+              const pct = totalMrr > 0 ? (mrr / totalMrr) * 100 : 0;
               return (
                 <div key={p.slug} className="space-y-1.5">
                   <div className="flex justify-between items-baseline">
                     <span className="font-semibold text-slate-300">{p.name}</span>
-                    <strong className="font-mono text-white text-xs">{formatAOA(p.mrr)}</strong>
+                    <strong className="font-mono text-white text-xs">{formatAOA(mrr)}</strong>
                   </div>
                   {/* Progress bar */}
                   <div className="h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-900">
@@ -139,9 +144,9 @@ export function ReportsPage() {
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-bold text-slate-500 font-mono w-4">#{idx + 1}</span>
                   <div>
-                    <h4 className="font-bold text-slate-200">{t.name}</h4>
+                    <h4 className="font-bold text-slate-200">{t.nome}</h4>
                     <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-                      Código: {t.code} · Província: {t.province}
+                      Código: {t.codigo} · Província: {t.province}
                     </p>
                   </div>
                 </div>

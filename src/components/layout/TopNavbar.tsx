@@ -1,5 +1,5 @@
 import { useBackoffice } from '../../context/BackofficeContext';
-import { Menu, X, PlusCircle, Shield, Sparkles, Sun, Moon } from 'lucide-react';
+import { Menu, X, PlusCircle, Sparkles, Sun, Moon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { PATHS } from '../../router/paths';
 
@@ -9,7 +9,7 @@ interface TopNavbarProps {
 }
 
 export function TopNavbar({ onToggleMobileMenu, isMobileMenuOpen }: TopNavbarProps) {
-  const { currentUser, changeOperator, canManageTenants, theme, toggleTheme } = useBackoffice();
+  const { currentUser, canManageTenants, theme, toggleTheme } = useBackoffice();
   const navigate = useNavigate();
 
   return (
@@ -55,19 +55,6 @@ export function TopNavbar({ onToggleMobileMenu, isMobileMenuOpen }: TopNavbarPro
         </button>
 
         {/* Role Switcher Simulator */}
-        <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 py-1 px-1.5 rounded-lg text-xs" title="Simulador de Funções RBAC">
-          <Shield className="w-3 h-3 text-amber-500" />
-          <select
-            value={currentUser.role}
-            onChange={(e) => changeOperator(e.target.value as any)}
-            className="bg-transparent text-slate-200 focus:outline-none font-mono text-[10px] sm:text-xs border-none cursor-pointer pr-1"
-          >
-            <option value="super_admin" className="bg-slate-950 text-slate-300 font-mono">Super Admin</option>
-            <option value="finance_admin" className="bg-slate-950 text-slate-300 font-mono">Financeiro</option>
-            <option value="support_admin" className="bg-slate-950 text-slate-300 font-mono">Suporte</option>
-          </select>
-        </div>
-
         {/* Primary action */}
         {canManageTenants && (
           <button
@@ -81,20 +68,16 @@ export function TopNavbar({ onToggleMobileMenu, isMobileMenuOpen }: TopNavbarPro
 
         {/* Active operator profile */}
         <div className="flex items-center gap-2 border-l border-slate-900 pl-3">
-          <img
-            src={currentUser.avatarUrl}
-            alt={currentUser.name}
-            referrerPolicy="no-referrer"
-            className="w-7 h-7 rounded-full object-cover border border-slate-800"
-          />
+          <div
+            className="w-7 h-7 text-[10px] rounded-full bg-slate-800 text-slate-200 flex items-center justify-center font-semibold border border-slate-700"
+            title={currentUser?.name}
+          >
+            {iniciais(currentUser?.name)}
+          </div>
           <div className="hidden md:block text-left">
-            <div className="text-xs font-semibold text-slate-200 leading-none">{currentUser.name}</div>
+            <div className="text-xs font-semibold text-slate-200 leading-none">{currentUser?.name || ''}</div>
             <div className="text-[9px] text-slate-500 font-mono leading-none mt-1 uppercase">
-              {currentUser.role === 'super_admin'
-                ? 'Super Admin'
-                : currentUser.role === 'finance_admin'
-                ? 'Financeiro'
-                : 'Suporte'}
+              {currentUser?.role ?? 'Operador'}
             </div>
           </div>
         </div>
@@ -103,3 +86,14 @@ export function TopNavbar({ onToggleMobileMenu, isMobileMenuOpen }: TopNavbarPro
   );
 }
 export default TopNavbar;
+
+/**
+ * Avatar sem imagem: a base nao tem fotos de operador. Duas iniciais tiradas
+ * do nome — melhor do que um `<img src="">` a pedir um ficheiro que nao existe.
+ */
+function iniciais(nome?: string): string {
+  const partes = (nome ?? '').trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return '?';
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+}

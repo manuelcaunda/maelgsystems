@@ -14,7 +14,7 @@ interface TenantListaCardProps {
 export function TenantListaCard({ tenant, plan }: TenantListaCardProps) {
   const navigate = useNavigate();
   const isTrial = tenant.status === 'trial';
-  const displayDate = isTrial ? tenant.trialEndsAt : tenant.nextBillingAt;
+  const displayDate = isTrial ? tenant.trialEndsAt : tenant.nextBillingDate;
   const dateLabel = isTrial ? 'Fim de Testes:' : 'Próx. Fatura:';
 
   return (
@@ -26,10 +26,10 @@ export function TenantListaCard({ tenant, plan }: TenantListaCardProps) {
     >
       <div className="flex justify-between items-start gap-2">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-white leading-tight truncate">{tenant.name}</h3>
+          <h3 className="text-sm font-semibold text-white leading-tight truncate">{tenant.nome}</h3>
           <div className="flex items-center gap-1.5 text-slate-500 text-[10px] font-mono mt-1">
             <Globe className="w-3 h-3 shrink-0 text-slate-600" />
-            <span className="truncate">{tenant.code} · {tenant.province}</span>
+            <span className="truncate">{tenant.codigo} · {tenant.province}</span>
           </div>
         </div>
         <StatusBadge domain="tenant" status={tenant.status} />
@@ -38,7 +38,7 @@ export function TenantListaCard({ tenant, plan }: TenantListaCardProps) {
       <div className="mt-3 pt-3 border-t border-slate-900/60 flex items-center justify-between text-[11px]">
         <div>
           <span className="text-slate-500">Plano:</span>{' '}
-          <strong className="text-slate-300 font-medium">{plan?.name || tenant.planSlug}</strong>
+          <strong className="text-slate-300 font-medium">{plan?.nome || (tenant.planoNome ?? '')}</strong>
         </div>
         {displayDate && (
           <div className="text-right font-mono">

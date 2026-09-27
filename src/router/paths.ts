@@ -14,6 +14,7 @@ export const PATHS = {
   // ─────────────────────────────────────────────
   // Ecrãs principais
   // ─────────────────────────────────────────────
+  login: '/login',
   dashboard: '/dashboard',
   reports: '/relatorios',
 
@@ -23,11 +24,11 @@ export const PATHS = {
   tenants: {
     list: '/tenants',
     create: '/tenants/novo',
-    detail: (id: string) => `/tenants/${id}`,
-    subscription: (id: string) => `/tenants/${id}/assinatura`,
-    billing: (id: string) => `/tenants/${id}/faturacao`,
-    audit: (id: string) => `/tenants/${id}/auditoria`,
-    maelgest: (id: string) => `/tenants/${id}/maelgest`,
+    detail: (id: number | string) => `/tenants/${id}`,
+    subscription: (id: number | string) => `/tenants/${id}/assinatura`,
+    billing: (id: number | string) => `/tenants/${id}/faturacao`,
+    audit: (id: number | string) => `/tenants/${id}/auditoria`,
+    maelgest: (id: number | string) => `/tenants/${id}/maelgest`,
   },
 
   // ─────────────────────────────────────────────
@@ -81,6 +82,5 @@ export const PATHS = {
     root: '/configuracoes',
     platform: '/configuracoes/plataforma',
     email: '/configuracoes/email',
-    jobs: '/configuracoes/jobs',
   },
 } as const;

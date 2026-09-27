@@ -43,8 +43,8 @@ export function DashboardPage() {
   // Calculate MRR from active subscriptions
   const activeTenants = tenants.filter(t => t.status === 'active');
   const totalMrr = activeTenants.reduce((sum, t) => {
-    const plan = plans.find(p => p.slug === t.planSlug);
-    return sum + (plan?.price || 0);
+    const plan = plans.find(p => p.codigo === (t.planoNome ?? ''));
+    return sum + (plan?.priceAoa || 0);
   }, 0);
 
   // Expiring Trials (next 7 days)
@@ -59,13 +59,13 @@ export function DashboardPage() {
 
   // Pending payments sum
   const pendingPayments = payments.filter(p => p.status === 'pending');
-  const totalPendingAmount = pendingPayments.reduce((sum, p) => sum + p.amount, 0);
+  const totalPendingAmount = pendingPayments.reduce((sum, p) => sum + p.amountAoa, 0);
 
   // Suspended tenants
   const suspendedTenantsCount = tenants.filter(t => t.status === 'suspended').length;
 
   // Active products
-  const activeProductsCount = products.filter(p => p.status === 'active' || p.status === 'beta').length;
+  const activeProductsCount = products.filter((p) => p.status === 'active').length;
 
   // ─────────────────────────────────────────────
   // Actionable Attention List ("Requer atenção")
@@ -88,7 +88,7 @@ export function DashboardPage() {
     attentionItems.push({
       id: `att-susp-${t.id}`,
       type: 'suspended',
-      title: t.name,
+      title: t.nome,
       description: `Serviço suspenso · NIF ${t.nif} · Localizado em ${t.province}`,
       daysCount: 999, // ultra high priority
       actionUrl: `/tenants/${t.id}`
@@ -97,17 +97,19 @@ export function DashboardPage() {
 
   // 2. Overdue payments (Priority 2)
   pendingPayments.forEach(p => {
+    // Sem data de vencimento nao ha atraso a medir: nao inventamos dias.
+    if (!p.dueDate) return;
     const dueDate = new Date(p.dueDate);
-    const delayDays = Math.ceil((Date.now() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+    const delayDays = Math.max(0, Math.ceil((Date.now() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
     
     attentionItems.push({
       id: `att-pay-${p.id}`,
       type: 'overdue_payment',
-      title: p.tenantName,
-      description: `Fatura ${p.invoiceNumber} vencida há ${delayDays} dias · ${formatAOA(p.amount)}`,
+      title: p.tenantNome ?? `Tenant ${p.tenantId}`,
+      description: `Fatura ${p.receiptNumber} vencida há ${delayDays} dias · ${formatAOA(p.amountAoa)}`,
       daysCount: delayDays,
       actionUrl: `/tenants/${p.tenantId}/faturacao`,
-      amount: p.amount
+      amount: p.amountAoa
     });
   });
 
@@ -117,8 +119,8 @@ export function DashboardPage() {
     attentionItems.push({
       id: `att-trial-${t.id}`,
       type: 'trial_expiry',
-      title: t.name,
-      description: `Período de testes expira em ${days} ${days === 1 ? 'dia' : 'dias'} · Plano: ${(plans.find(p => p.slug === t.planSlug)?.name || t.planSlug)}`,
+      title: t.nome,
+      description: `Período de testes expira em ${days} ${days === 1 ? 'dia' : 'dias'} · Plano: ${(plans.find(p => p.codigo === (t.planoNome ?? ''))?.nome || (t.planoNome ?? ''))}`,
       daysCount: 10 - days, // lower remaining days = higher priority
       actionUrl: `/tenants/${t.id}/assinatura`
     });
@@ -199,7 +201,7 @@ export function DashboardPage() {
           </div>
           <div className="text-[11px] text-slate-400 mt-2 truncate font-sans">
             {expiringTrials.length > 0
-              ? expiringTrials.map(t => t.name.split(' ')[0]).join(', ')
+              ? expiringTrials.map(t => t.nome.split(' ')[0]).join(', ')
               : 'Nenhum trial expira esta semana'}
           </div>
           {hasUrgentTrial && (

@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { PATHS } from './paths';
 import { BackofficeLayout } from '../components/layout/BackofficeLayout';
+import { RequireSessao } from '../components/auth/RequireSessao';
+import { LoginPage } from '../pages/auth/LoginPage';
 
 // Pages list
 import { DashboardPage } from '../pages/dashboard/DashboardPage';
@@ -30,11 +32,20 @@ import { ReportsPage } from '../pages/reports/ReportsPage';
 export function AppRouter() {
   return (
     <Routes>
+      {/* Porta de entrada: fora do backoffice, sem sessao obrigatoria */}
+      <Route path={PATHS.login} element={<LoginPage />} />
+
       {/* Redirecionamento da raiz para o dashboard */}
       <Route index element={<Navigate to={PATHS.dashboard} replace />} />
 
-      {/* Rotas que partilham o layout do backoffice */}
-      <Route element={<BackofficeLayout />}>
+      {/* Tudo o resto exige operador com token valido */}
+      <Route
+        element={
+          <RequireSessao>
+            <BackofficeLayout />
+          </RequireSessao>
+        }
+      >
         <Route path={PATHS.dashboard} element={<DashboardPage />} />
         
         {/* Tenants / Clientes */}

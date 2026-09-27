@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { TopNavbar } from './TopNavbar';
 import { Sidebar } from './Sidebar';
-import { SupportModeBanner } from './SupportModeBanner';
 import { useBackoffice } from '../../context/BackofficeContext';
 
 /**
@@ -20,8 +19,6 @@ export function BackofficeLayout() {
         onToggleMobileMenu={() => setIsMobileMenuOpen(v => !v)}
         isMobileMenuOpen={isMobileMenuOpen}
       />
-
-      <SupportModeBanner />
 
       <div className="flex-1 flex overflow-hidden relative">
         <Sidebar

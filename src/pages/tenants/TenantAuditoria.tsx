@@ -13,7 +13,10 @@ export function TenantAuditPage() {
 
   // Filter logs for this specific tenant
   const tenantLogs = auditLogs.filter(
-    (log) => log.entityId === tenant.id || log.details.includes(tenant.name) || log.details.includes(tenant.code)
+    (log) =>
+      log.entityId === String(tenant.id) ||
+      (log.details ?? '').includes(tenant.nome) ||
+      (log.details ?? '').includes(tenant.codigo),
   );
 
   return (
@@ -41,7 +44,7 @@ export function TenantAuditPage() {
               return (
                 <div key={log.id} className="relative group">
                   {/* Timeline dot */}
-                  <span className="absolute -left-[30px] top-1 flex items-center justify-center bg-slate-950 border border-slate-900 rounded-full p-1 shrink-0 text-slate-500">
+                  <span className={`absolute -left-[30px] top-1 flex items-center justify-center bg-slate-950 border border-slate-900 rounded-full p-1 shrink-0 ${iconColor}`}>
                     <Icon className="w-3.5 h-3.5" />
                   </span>
 
@@ -56,30 +59,22 @@ export function TenantAuditPage() {
                     <div className="text-[11px] text-slate-500 font-mono flex items-center gap-3">
                       <span className="flex items-center gap-1">
                         <User className="w-3 h-3" />
-                        {log.operatorName} ({log.operatorRole === 'super_admin' ? 'Super Admin' : 'Operador'})
+                        {log.actorName} ({log.actorRole === 'super_admin' ? 'Super Admin' : 'Operador'})
                       </span>
                       <span>·</span>
-                      <span>IP: {log.operatorIp}</span>
+                      <span>IP: {log.ipAddress}</span>
                       <span>·</span>
-                      <span>{formatDateTime(log.timestamp)}</span>
+                      <span>{formatDateTime(log.criadoEm)}</span>
                     </div>
 
                     {/* Before / After state differences if available */}
-                    {(log.before || log.after) && (
+                    {(log.changes || '') && (
                       <div className="mt-2.5 p-3 bg-slate-950 rounded-lg border border-slate-900 grid grid-cols-1 sm:grid-cols-2 gap-4 text-[10px] font-mono">
-                        {log.before && (
+                        {log.changes && (
                           <div>
                             <span className="text-slate-600 block mb-1 uppercase tracking-wider">Estado Anterior:</span>
                             <pre className="text-rose-400 bg-rose-950/10 p-2 rounded border border-rose-950/20 overflow-x-auto whitespace-pre-wrap max-h-32">
-                              {log.before}
-                            </pre>
-                          </div>
-                        )}
-                        {log.after && (
-                          <div className={!log.before ? 'sm:col-span-2' : ''}>
-                            <span className="text-slate-600 block mb-1 uppercase tracking-wider">Novo Estado Aplicado:</span>
-                            <pre className="text-emerald-400 bg-emerald-950/10 p-2 rounded border border-emerald-950/20 overflow-x-auto whitespace-pre-wrap max-h-32">
-                              {log.after}
+                              {log.changes}
                             </pre>
                           </div>
                         )}

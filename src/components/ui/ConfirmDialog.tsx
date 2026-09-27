@@ -17,6 +17,16 @@ interface ConfirmDialogProps {
   variant?: 'danger' | 'warning' | 'default';
   requireTyping?: string;
   consequences?: Consequence[];
+  /**
+   * Motivo da accao. Vem por callback porque o dialog e' controlado: quem o
+   * abre guarda o texto e envia-o para a API. Uma suspensao sem motivo
+   * registado nao serve para explicar ao cliente porque perdeu o acesso.
+   */
+  motivo?: string;
+  onMotivoChange?: (motivo: string) => void;
+  motivoLabel?: string;
+  motivoObrigatorio?: boolean;
+  motivoPlaceholder?: string;
 }
 
 export function ConfirmDialog({
@@ -30,6 +40,11 @@ export function ConfirmDialog({
   variant = 'default',
   requireTyping,
   consequences,
+  motivo,
+  onMotivoChange,
+  motivoLabel = 'Motivo',
+  motivoObrigatorio = false,
+  motivoPlaceholder,
 }: ConfirmDialogProps) {
   const [typedValue, setTypedValue] = useState('');
   const modalRef = useRef<HTMLDivElement>(null);
@@ -94,7 +109,9 @@ export function ConfirmDialog({
 
   if (!open) return null;
 
-  const isConfirmDisabled = requireTyping ? typedValue !== requireTyping : false;
+  const isConfirmDisabled =
+    (requireTyping ? typedValue !== requireTyping : false) ||
+    (motivoObrigatorio ? !(motivo ?? '').trim() : false);
 
   let btnColor = 'bg-indigo-600 hover:bg-indigo-500 border-indigo-500 text-white';
   let iconColor = 'text-indigo-400 bg-indigo-500/10 border-indigo-500/10';
@@ -142,6 +159,28 @@ export function ConfirmDialog({
                     <span className="text-slate-300 font-medium">{c.value}</span>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Motivo da accao */}
+            {onMotivoChange && (
+              <div className="mt-4">
+                <label className="block text-[11px] text-slate-400 mb-1.5">
+                  {motivoLabel}
+                  {motivoObrigatorio && <span className="text-rose-400"> *</span>}
+                </label>
+                <textarea
+                  value={motivo ?? ''}
+                  onChange={(e) => onMotivoChange(e.target.value)}
+                  rows={2}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-md py-1.5 px-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 placeholder-slate-600 resize-none"
+                  placeholder={motivoPlaceholder ?? 'Descreva o motivo. Fica registado na auditoria.'}
+                />
+                {motivoObrigatorio && !(motivo ?? '').trim() && (
+                  <p className="mt-1 text-[10px] text-rose-400">
+                    O motivo é obrigatório para esta acção.
+                  </p>
+                )}
               </div>
             )}
 

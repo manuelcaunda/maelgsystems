@@ -72,11 +72,11 @@ export function TenantsListPage() {
   const filteredTenants = useMemo(() => {
     return tenants.filter((t) => {
       const matchSearch =
-        t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.nif.includes(searchTerm);
+        t.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (t.nif ?? '').includes(searchTerm);
         
-      const matchProduct = selectedProduct === 'all' || t.productSlug === selectedProduct;
+      const matchProduct = selectedProduct === 'all' || t.produtoSlug === selectedProduct;
       const matchStatus = selectedStatus === 'all' || t.status === selectedStatus;
       const matchProvince = selectedProvince === 'all' || t.province === selectedProvince;
 
@@ -224,7 +224,7 @@ export function TenantsListPage() {
               </thead>
               <tbody className="divide-y divide-slate-950 text-xs">
                 {filteredTenants.map((t) => {
-                  const plan = plans.find((p) => p.slug === t.planSlug);
+                  const plan = plans.find((p) => p.codigo === (t.planoNome ?? ''));
                   return (
                     <tr
                       key={t.id}
@@ -233,15 +233,15 @@ export function TenantsListPage() {
                     >
                       <td className="py-3.5 px-4">
                         <div className="font-semibold text-slate-100 group-hover:text-white leading-normal">
-                          {t.name}
+                          {t.nome}
                         </div>
                         <div className="text-[11px] font-mono text-slate-500 mt-1">
-                          {t.code} · NIF: {t.nif}
+                          {t.codigo} · NIF: {t.nif}
                         </div>
                       </td>
                       <td className="py-3.5 px-4">
-                        <div className="font-medium text-slate-300">{plan?.name || t.planSlug}</div>
-                        <div className="text-[11px] text-slate-500 mt-0.5 capitalize">Produto: {t.productSlug}</div>
+                        <div className="font-medium text-slate-300">{plan?.nome || (t.planoNome ?? '')}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5 capitalize">Produto: {t.produtoSlug}</div>
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <StatusBadge domain="tenant" status={t.status} />
@@ -270,7 +270,7 @@ export function TenantsListPage() {
               <TenantListaCard
                 key={t.id}
                 tenant={t}
-                plan={plans.find((p) => p.slug === t.planSlug)}
+                plan={plans.find((p) => p.codigo === (t.planoNome ?? ''))}
               />
             ))}
           </div>

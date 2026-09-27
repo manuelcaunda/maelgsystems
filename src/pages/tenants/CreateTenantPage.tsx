@@ -5,21 +5,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { formatAOA, PROVINCES_ANGOLA } from '../../utils/formatters';
-import {
-  GraduationCap,
-  Building,
-  User,
-  CheckCircle,
-  ChevronRight,
-  ChevronLeft,
-  Loader2,
-  Lock,
-  Eye,
-  Server,
-  Terminal,
-  Sparkles,
-  FileCheck
-} from 'lucide-react';
+import { GraduationCap, Building, User, CheckCircle, ChevronRight, ChevronLeft, Lock, Eye, Sparkles, FileCheck } from 'lucide-react';
 import { PATHS } from '../../router/paths';
 
 export function CreateTenantPage() {
@@ -28,11 +14,11 @@ export function CreateTenantPage() {
 
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [createdId, setCreatedId] = useState('');
+  const [createdId, setCreatedId] = useState<number | null>(null);
 
   // Form states
   const [productSlug, setProductSlug] = useState('maelgest');
-  const [planSlug, setPlanSlug] = useState('maelgest-pro');
+  const [planId, setPlanId] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [nif, setNif] = useState('');
   const [province, setProvince] = useState('Luanda');
@@ -45,10 +31,10 @@ export function CreateTenantPage() {
   const [notes, setNotes] = useState('');
 
   // Filter plans based on product choice
-  const availablePlans = plans.filter((p) => p.productSlug === productSlug && p.status === 'active');
+  const availablePlans = plans.filter((p) => p.produtoSlug === productSlug && p.isActive === true);
 
   const selectedProduct = products.find((p) => p.slug === productSlug);
-  const selectedPlan = plans.find((p) => p.slug === planSlug);
+  const selectedPlan = plans.find((p) => p.id === planId);
 
   const handleNextStep = () => {
     // Basic validation
@@ -83,29 +69,27 @@ export function CreateTenantPage() {
   const handleProductChange = (slug: string) => {
     setProductSlug(slug);
     // Auto-select first active plan for this product
-    const firstPlan = plans.find((p) => p.productSlug === slug && p.status === 'active');
-    if (firstPlan) {
-      setPlanSlug(firstPlan.slug);
-    }
+    const firstPlan = plans.find((p) => p.produtoSlug === slug && p.isActive === true);
+    setPlanId(firstPlan?.id ?? null);
   };
 
   const handleProvision = async () => {
     setLoading(true);
     try {
+      // A senha nao passa por aqui: a plataforma nao a guarda. Quem cria a
+      // escola no produto e' que define a senha do director, na propria app.
       const tenantId = await createTenant({
-        name,
-        nif,
+        nome: name,
+        produtoSlug: productSlug,
+        planoId: planId ?? undefined,
+        nif: nif || undefined,
         province,
-        city,
-        status,
-        planSlug,
-        productSlug,
-        contactName,
-        contactEmail,
-        contactPhone,
-        adminPassword: 'MaelG@2026' + Math.random().toString(36).substring(2, 6).toUpperCase(),
-        notes: notes || `Cliente criado manualmente via Control Plane wizard.`
-      });
+        city: city || undefined,
+        firstAdminName: contactName || undefined,
+        firstAdminEmail: contactEmail || undefined,
+        firstAdminPhone: contactPhone || undefined,
+        trialDias: status === 'trial' ? 14 : 0,
+        notas: notes || undefined });
       setCreatedId(tenantId);
       setStep(5); // Success step
     } catch (e: any) {
@@ -195,10 +179,12 @@ export function CreateTenantPage() {
                   }`}
                 >
                   <strong className="text-xs font-bold text-white block">{p.name}</strong>
-                  <span className="text-[10px] text-slate-500 mt-1 block leading-normal line-clamp-2">{p.description}</span>
-                  {p.status === 'beta' && (
+                  <span className="text-[10px] text-slate-500 mt-1 block leading-normal line-clamp-2">
+                    {p.description || ''}
+                  </span>
+                  {p.status !== 'active' && (
                     <span className="absolute top-2 right-2 text-[8px] font-bold bg-indigo-600/20 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/20 uppercase tracking-wide">
-                      BETA
+                      {p.status.toUpperCase()}
                     </span>
                   )}
                 </div>
@@ -212,9 +198,9 @@ export function CreateTenantPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {availablePlans.map((p) => (
                 <label
-                  key={p.slug}
+                  key={p.codigo}
                   className={`flex items-center justify-between p-3.5 rounded-lg border cursor-pointer select-none transition-colors ${
-                    planSlug === p.slug
+                    planId === p.id
                       ? 'border-indigo-500 bg-indigo-500/5'
                       : 'border-slate-850 bg-slate-900/40 hover:bg-slate-900/60'
                   }`}
@@ -223,17 +209,19 @@ export function CreateTenantPage() {
                     <input
                       type="radio"
                       name="plan"
-                      value={p.slug}
-                      checked={planSlug === p.slug}
-                      onChange={() => setPlanSlug(p.slug)}
+                      value={p.id}
+                      checked={planId === p.id}
+                      onChange={() => setPlanId(p.id)}
                       className="text-indigo-500 focus:ring-indigo-500"
                     />
                     <div>
-                      <div className="font-semibold text-slate-200 text-xs">{p.name}</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">{p.description}</div>
+                      <div className="font-semibold text-slate-200 text-xs">{p.nome}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5 font-mono">
+                        {formatAOA(p.priceAoa)}
+                      </div>
                     </div>
                   </div>
-                  <strong className="text-slate-300 font-mono text-[11px] shrink-0 ml-3">{formatAOA(p.price)}</strong>
+                  <strong className="text-slate-300 font-mono text-[11px] shrink-0 ml-3">{formatAOA(p.priceAoa)}</strong>
                 </label>
               ))}
             </div>
@@ -431,7 +419,7 @@ export function CreateTenantPage() {
             </div>
             <div>
               <span className="text-slate-500 block mb-1">Plano & Taxa Comercial</span>
-              <strong className="text-white font-mono font-black">{selectedPlan?.name} · {formatAOA(selectedPlan?.price || 0)}</strong>
+              <strong className="text-white font-mono font-black">{selectedPlan?.nome} · {formatAOA(selectedPlan?.priceAoa || 0)}</strong>
             </div>
             <div>
               <span className="text-slate-500 block mb-1">Modo do Serviço</span>

@@ -2,7 +2,7 @@
  * Formatter utilities for MaelG Backoffice.
  */
 
-export function formatAOA(amount: number): string {
+export function formatAOA(amount: number | null): string {
   if (amount === undefined || amount === null) return '0 AOA';
   const formatted = new Intl.NumberFormat('pt-AO', {
     minimumFractionDigits: 0,
@@ -11,7 +11,7 @@ export function formatAOA(amount: number): string {
   return `${formatted} AOA`;
 }
 
-export function formatDate(dateString?: string): string {
+export function formatDate(dateString?: string | null): string {
   if (!dateString) return '-';
   const date = new Date(dateString);
   if (isNaN(date.getTime())) return dateString;
@@ -24,7 +24,7 @@ export function formatDate(dateString?: string): string {
   return `${day} ${month} ${year}`;
 }
 
-export function formatDateTime(dateString?: string): string {
+export function formatDateTime(dateString?: string | null): string {
   if (!dateString) return '-';
   const date = new Date(dateString);
   if (isNaN(date.getTime())) return dateString;
@@ -35,7 +35,7 @@ export function formatDateTime(dateString?: string): string {
   return `${formattedDate} às ${hours}:${minutes}`;
 }
 
-export function getDaysRemaining(dateString?: string): number {
+export function getDaysRemaining(dateString?: string | null): number {
   if (!dateString) return 0;
   const target = new Date(dateString);
   const now = new Date();

@@ -4,7 +4,7 @@ import { useBackoffice } from '../../context/BackofficeContext';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { formatDateTime, PROVINCES_ANGOLA } from '../../utils/formatters';
-import { Building, User, FileText, Mail, Phone, Calendar, Globe, MapPin, Edit, X } from 'lucide-react';
+import { Building, User, FileText, Globe, Edit, X } from 'lucide-react';
 
 export function TenantPerfil() {
   const tenant = useTenant();
@@ -20,22 +20,20 @@ export function TenantPerfil() {
     contactName: '',
     contactEmail: '',
     contactPhone: '',
-    notes: '',
-  });
+    notes: '' });
 
   if (!tenant) return null;
 
   const handleOpenEdit = () => {
     setFormData({
-      name: tenant.name,
-      nif: tenant.nif,
+      name: tenant.nome,
+      nif: tenant.nif ?? '',
       province: tenant.province || 'Luanda',
       city: tenant.city || '',
-      contactName: tenant.contactName || '',
+      contactName: tenant.contactEmail || '',
       contactEmail: tenant.contactEmail || '',
       contactPhone: tenant.contactPhone || '',
-      notes: tenant.notes || '',
-    });
+      notes: tenant.notas || '' });
     setIsEditing(true);
   };
 
@@ -65,7 +63,7 @@ export function TenantPerfil() {
             <div className="space-y-3.5 text-xs">
               <div className="grid grid-cols-2 gap-2.5 border-b border-slate-900/40 pb-2">
                 <span className="text-slate-500">Nome Oficial:</span>
-                <strong className="text-slate-200 dark:text-slate-900 font-medium text-right lg:text-left">{tenant.name}</strong>
+                <strong className="text-slate-200 dark:text-slate-900 font-medium text-right lg:text-left">{tenant.nome}</strong>
               </div>
               <div className="grid grid-cols-2 gap-2.5 border-b border-slate-900/40 pb-2">
                 <span className="text-slate-500">NIF Contribuinte:</span>
@@ -80,13 +78,13 @@ export function TenantPerfil() {
               <div className="grid grid-cols-2 gap-2.5 border-b border-slate-900/40 pb-2">
                 <span className="text-slate-500">Data de Registo:</span>
                 <strong className="text-slate-300 dark:text-slate-700 font-mono text-right lg:text-left">
-                  {formatDateTime(tenant.registrationDate)}
+                  {formatDateTime(tenant.criadoEm)}
                 </strong>
               </div>
               <div className="grid grid-cols-2 gap-2.5">
                 <span className="text-slate-500">Identificador Interno:</span>
                 <strong className="text-amber-500 font-mono text-right lg:text-left select-all">
-                  {tenant.id.toUpperCase()}
+                  {tenant.codigo}
                 </strong>
               </div>
             </div>
@@ -117,7 +115,7 @@ export function TenantPerfil() {
             <div className="space-y-3.5 text-xs">
               <div className="grid grid-cols-2 gap-2.5 border-b border-slate-900/40 pb-2">
                 <span className="text-slate-500">Nome do Gestor:</span>
-                <strong className="text-slate-200 dark:text-slate-900 font-medium text-right lg:text-left">{tenant.contactName}</strong>
+                <strong className="text-slate-200 dark:text-slate-900 font-medium text-right lg:text-left">{tenant.contactEmail}</strong>
               </div>
               <div className="grid grid-cols-2 gap-2.5 border-b border-slate-900/40 pb-2">
                 <span className="text-slate-500">Endereço de Email:</span>
@@ -140,7 +138,7 @@ export function TenantPerfil() {
               <div className="grid grid-cols-2 gap-2.5">
                 <span className="text-slate-500">Código de Credencial:</span>
                 <strong className="text-slate-400 dark:text-slate-700 font-mono text-right lg:text-left select-all bg-slate-950 dark:bg-slate-100 px-1.5 py-0.5 rounded border border-slate-900 dark:border-slate-300">
-                  {tenant.adminCode || 'Ainda não gerado'}
+                  {tenant.firstAdminCodigo || 'Ainda não gerado'}
                 </strong>
               </div>
             </div>
@@ -154,8 +152,8 @@ export function TenantPerfil() {
             </div>
 
             <div className="text-xs text-slate-400 flex-1 leading-relaxed whitespace-pre-wrap">
-              {tenant.notes ? (
-                tenant.notes
+              {tenant.notas ? (
+                tenant.notas
               ) : (
                 <span className="text-slate-600 font-normal italic">
                   Nenhuma anotação administrativa registada para este cliente. Pode registar notas adicionando observações no processo de alteração de planos.
@@ -238,7 +236,7 @@ export function TenantPerfil() {
                   <input
                     type="text"
                     required
-                    value={formData.contactName}
+                    value={formData.contactEmail}
                     onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
                     className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-800 dark:border-slate-300 rounded-lg p-2 text-white dark:text-slate-900 focus:outline-none focus:border-amber-500"
                   />

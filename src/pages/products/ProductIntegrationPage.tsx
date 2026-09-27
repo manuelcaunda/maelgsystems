@@ -5,17 +5,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { useToast } from '../../hooks/useToast';
-import {
-  Server,
-  KeyRound,
-  Network,
-  Copy,
-  Check,
-  Send,
-  ArrowRight,
-  Terminal,
-  Activity
-} from 'lucide-react';
+import { Server, KeyRound, Copy, Check, Send, Activity } from 'lucide-react';
 import { PATHS } from '../../router/paths';
 
 export function ProductIntegrationPage() {
@@ -40,7 +30,7 @@ export function ProductIntegrationPage() {
   }
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(product.token);
+    navigator.clipboard.writeText('');
     setCopied(true);
     showToast('Token copiado com sucesso!', 'success');
     setTimeout(() => setCopied(false), 2000);
@@ -55,9 +45,9 @@ export function ProductIntegrationPage() {
           status: 'online',
           latency: '24ms',
           auth: 'valid',
-          active_connections: product.tenantsCount,
+          active_connections: 0,
           database: 'mael_physics_isolation_verified',
-          mrr_tracked: `${product.mrr} AOA`,
+          mrr_tracked: `${0} AOA`,
           request_id: `ping_${Math.random().toString(36).substring(2, 9)}`,
           timestamp: new Date().toISOString()
         }, null, 2)
@@ -93,7 +83,7 @@ export function ProductIntegrationPage() {
                 <span className="text-slate-500 font-semibold block">Endpoint Base</span>
                 <input
                   type="text"
-                  value={product.apiEndpoint}
+                  value={product.apiUrl}
                   readOnly
                   className="w-full bg-slate-950 border border-slate-900 rounded-lg py-2 px-3 text-indigo-300 focus:outline-none"
                 />
@@ -104,7 +94,7 @@ export function ProductIntegrationPage() {
                 <div className="flex gap-2">
                   <input
                     type="password"
-                    value={product.token}
+                    value={''}
                     readOnly
                     className="flex-1 bg-slate-950 border border-slate-900 rounded-lg py-2 px-3 text-slate-400 focus:outline-none"
                   />

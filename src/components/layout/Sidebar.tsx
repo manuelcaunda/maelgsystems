@@ -1,4 +1,4 @@
-import { useLocation, NavLink, useNavigate } from 'react-router-dom';
+import { useLocation, NavLink } from 'react-router-dom';
 import { useBackoffice } from '../../context/BackofficeContext';
 import {
   LayoutDashboard,
@@ -22,7 +22,6 @@ interface SidebarProps {
 
 export function Sidebar({ isMobileOpen = false, onCloseMobile }: SidebarProps) {
   const { pathname } = useLocation();
-  const navigate = useNavigate();
   const { tenants, payments, isSuperAdmin, currentUser } = useBackoffice();
 
   const activeTenantsCount = tenants.filter(t => t.status === 'active').length;
@@ -97,18 +96,18 @@ export function Sidebar({ isMobileOpen = false, onCloseMobile }: SidebarProps) {
       {/* Mini Profile summary in sidebar */}
       <div className="bg-slate-900/40 border border-slate-900 p-3 rounded-lg mb-4 flex items-center gap-2.5">
         <div className="relative">
-          <img
-            src={currentUser.avatarUrl}
-            alt={currentUser.name}
-            referrerPolicy="no-referrer"
-            className="w-8 h-8 rounded-full object-cover border border-slate-800"
-          />
+          <div
+            className="w-8 h-8 text-[11px] rounded-full bg-slate-800 text-slate-200 flex items-center justify-center font-semibold border border-slate-700"
+            title={currentUser?.name}
+          >
+            {iniciais(currentUser?.name)}
+          </div>
           <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border border-slate-950 rounded-full"></span>
         </div>
         <div className="min-w-0">
-          <div className="text-xs font-semibold text-slate-200 leading-tight truncate">{currentUser.name}</div>
+          <div className="text-xs font-semibold text-slate-200 leading-tight truncate">{currentUser?.name || ''}</div>
           <div className="text-[9px] text-slate-500 font-mono leading-none mt-1 uppercase truncate">
-            {currentUser.role === 'super_admin' ? 'Acesso Total' : 'Operador'}
+            {currentUser?.role === 'super_admin' ? 'Acesso Total' : 'Operador'}
           </div>
         </div>
       </div>
@@ -202,3 +201,14 @@ export function Sidebar({ isMobileOpen = false, onCloseMobile }: SidebarProps) {
   );
 }
 export default Sidebar;
+
+/**
+ * Avatar sem imagem: a base nao tem fotos de operador. Duas iniciais tiradas
+ * do nome — melhor do que um `<img src="">` a pedir um ficheiro que nao existe.
+ */
+function iniciais(nome?: string): string {
+  const partes = (nome ?? '').trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return '?';
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+}

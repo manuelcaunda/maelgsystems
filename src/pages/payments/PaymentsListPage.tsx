@@ -6,7 +6,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
 import { formatAOA, formatDate, getPaymentMethodLabel } from '../../utils/formatters';
-import { Search, Plus, CreditCard, Download, Filter, X, Edit, Trash2 } from 'lucide-react';
+import { Search, Plus, CreditCard, X, Trash2, FileText } from 'lucide-react';
 
 export function PaymentsListPage() {
   const { payments, tenants, canManagePayments, registerPayment, deletePayment, theme } = useBackoffice();
@@ -14,17 +14,16 @@ export function PaymentsListPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [editingPayment, setEditingPayment] = useState<any>(null);
 
   // Form states
-  const [selectedTenantId, setSelectedPlanTenantId] = useState('');
-  const [paymentAmount, setPaymentAmount] = useState(150000);
+  const [selectedTenantId, setSelectedPlanTenantId] = useState<number | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState(0);
   const [paymentNotes, setPaymentNotes] = useState('');
-  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'pending' | 'failed' | 'refunded'>('pending');
+  const [paymentReference, setPaymentReference] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'multicaixa_referencia' | 'cash' | 'check'>('bank_transfer');
 
   // Delete State
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const handleResetFilters = () => {
     setSearchTerm('');
@@ -32,22 +31,11 @@ export function PaymentsListPage() {
   };
 
   const handleOpenCreate = () => {
-    setEditingPayment(null);
-    setSelectedPlanTenantId(tenants[0]?.id || '');
-    setPaymentAmount(150000);
+    setSelectedPlanTenantId(null);
+    setPaymentAmount(0);
     setPaymentNotes('');
-    setPaymentStatus('pending');
+    setPaymentReference('');
     setPaymentMethod('bank_transfer');
-    setShowRegisterModal(true);
-  };
-
-  const handleOpenEdit = (p: any) => {
-    setEditingPayment(p);
-    setSelectedPlanTenantId(p.tenantId);
-    setPaymentAmount(p.amount);
-    setPaymentNotes(p.notes || '');
-    setPaymentStatus(p.status);
-    setPaymentMethod(p.paymentMethod || 'bank_transfer');
     setShowRegisterModal(true);
   };
 
@@ -58,26 +46,19 @@ export function PaymentsListPage() {
       return;
     }
 
-    const payload: any = {
+    // Um pagamento e' um recibo: cria-se, nao se edita. Quem emite o recibo e'
+    // a plataforma (RC-ano/sequencia) e quem calcula a proxima data de
+    // facturacao e' a assinatura. O status nao vem no pedido.
+    registerPayment({
       tenantId: selectedTenantId,
-      amount: Number(paymentAmount),
-      status: paymentStatus,
-      paymentMethod: paymentMethod,
-      notes: paymentNotes || 'Emitido via MaelG Caixa.'
-    };
-
-    if (editingPayment) {
-      payload.id = editingPayment.id;
-      payload.invoiceNumber = editingPayment.invoiceNumber;
-    } else {
-      payload.dueDate = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
-    }
-
-    registerPayment(payload);
+      amountAoa: Number(paymentAmount),
+      paymentMethod,
+      reference: paymentReference || undefined,
+      notas: paymentNotes || undefined });
     setShowRegisterModal(false);
   };
 
-  const handleDeleteClick = (id: string) => {
+  const handleDeleteClick = (id: number) => {
     setDeleteId(id);
   };
 
@@ -91,8 +72,8 @@ export function PaymentsListPage() {
   // Filter payments
   const filteredPayments = payments.filter((p) => {
     const matchSearch =
-      p.tenantName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase());
+      (p.tenantNome ?? '').toLowerCase().includes(searchTerm.toLowerCase());
+      p.receiptNumber.toLowerCase().includes(searchTerm.toLowerCase());
     const matchStatus = selectedStatus === 'all' || p.status === selectedStatus;
     return matchSearch && matchStatus;
   });
@@ -177,17 +158,17 @@ export function PaymentsListPage() {
                 {filteredPayments.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-900/20 transition-colors">
                     <td className="py-3.5 px-4">
-                      <strong className="text-slate-100 dark:text-slate-900 font-semibold">{p.tenantName}</strong>
+                      <strong className="text-slate-100 dark:text-slate-900 font-semibold">{p.tenantNome}</strong>
                     </td>
                     <td className="py-3.5 px-4 font-mono font-semibold text-slate-400">
-                      {p.invoiceNumber}
+                      {p.receiptNumber}
                     </td>
                     <td className="py-3.5 px-4 font-mono font-bold text-white dark:text-slate-900">
-                      {formatAOA(p.amount)}
+                      {formatAOA(p.amountAoa)}
                     </td>
                     <td className="py-3.5 px-4 font-mono text-slate-400">
                       {p.status === 'paid' ? (
-                        <span>Pago a {formatDate(p.paymentDate)}</span>
+                        <span>Pago a {formatDate(p.paidAt)}</span>
                       ) : (
                         <span className={p.status === 'pending' ? 'text-amber-500 font-semibold' : 'text-slate-500'}>
                           Vence a {formatDate(p.dueDate)}
@@ -204,13 +185,6 @@ export function PaymentsListPage() {
                       {canManagePayments ? (
                         <div className="flex items-center justify-end gap-1.5">
                           <button
-                            onClick={() => handleOpenEdit(p)}
-                            className="p-1 rounded bg-[#2B3139] hover:bg-[#353C45] text-amber-400 hover:text-amber-300 transition-colors"
-                            title="Editar Estado"
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                          </button>
-                          <button
                             onClick={() => handleDeleteClick(p.id)}
                             className="p-1 rounded bg-rose-900/40 hover:bg-rose-900/60 text-rose-400 hover:text-rose-300 transition-colors"
                             title="Eliminar"
@@ -218,17 +192,14 @@ export function PaymentsListPage() {
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
-                      ) : p.receiptUrl ? (
-                        <a
-                          href="#"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            alert(`Fazendo download do arquivo fiscal oficial: ${p.receiptUrl}`);
-                          }}
-                          className="text-slate-500 hover:text-slate-200 inline-flex items-center gap-1 hover:underline text-xs"
+                      ) : p.status === 'paid' ? (
+                        <span
+                          className="text-slate-500 inline-flex items-center gap-1 text-xs"
+                          title={p.reference ? `Referencia: ${p.reference}` : undefined}
                         >
-                          <Download className="w-3.5 h-3.5" /> PDF
-                        </a>
+                          <FileText className="w-3.5 h-3.5" />
+                          {p.receiptNumber}
+                        </span>
                       ) : (
                         <span className="text-slate-600 font-mono">-</span>
                       )}
@@ -244,26 +215,21 @@ export function PaymentsListPage() {
             {filteredPayments.map((p) => (
               <Card key={p.id} variant="default" padding="md" className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <h4 className="text-xs font-bold text-white dark:text-slate-900 truncate max-w-[160px]">{p.tenantName}</h4>
+                  <h4 className="text-xs font-bold text-white dark:text-slate-900 truncate max-w-[160px]">{p.tenantNome}</h4>
                   <div className="flex items-center gap-1.5">
                     <StatusBadge domain="payment" status={p.status} />
-                    {canManagePayments && (
-                      <button onClick={() => handleOpenEdit(p)} className="p-1 text-amber-500">
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
-                    )}
                   </div>
                 </div>
                 <div className="flex justify-between items-baseline font-mono text-xs">
                   <span className="text-slate-500 text-[10px]">Factura / Valor:</span>
                   <span className="text-slate-200 dark:text-slate-800">
-                    {p.invoiceNumber} · <strong className="text-white dark:text-slate-900 font-bold">{formatAOA(p.amount)}</strong>
+                    {p.receiptNumber} · <strong className="text-white dark:text-slate-900 font-bold">{formatAOA(p.amountAoa)}</strong>
                   </span>
                 </div>
                 <div className="text-[10px] font-mono text-slate-500 flex justify-between items-center">
                   <span>Método: {p.paymentMethod ? getPaymentMethodLabel(p.paymentMethod) : '-'}</span>
                   <span>
-                    {p.status === 'paid' ? `Pago: ${formatDate(p.paymentDate)}` : `Vence: ${formatDate(p.dueDate)}`}
+                    {p.status === 'paid' ? `Pago: ${formatDate(p.paidAt)}` : `Vence: ${formatDate(p.dueDate)}`}
                   </span>
                 </div>
               </Card>
@@ -287,7 +253,7 @@ export function PaymentsListPage() {
           }`}>
             <div className="flex items-center justify-between border-b border-slate-800 dark:border-slate-100 pb-3 mb-4">
               <h3 className="text-xs font-bold text-white dark:text-slate-950 uppercase tracking-wider font-mono">
-                {editingPayment ? `Alterar Fatura ${editingPayment.invoiceNumber}` : 'Emitir Fatura de Licença'}
+                Registar Pagamento
               </h3>
               <button onClick={() => setShowRegisterModal(false)} className="p-1 rounded bg-slate-900 dark:bg-slate-100 text-slate-500 hover:text-slate-300">
                 <X className="w-4 h-4" />
@@ -298,21 +264,21 @@ export function PaymentsListPage() {
               <div className="space-y-1.5">
                 <label className="text-slate-500 font-semibold">Cliente / Instituição *</label>
                 <select
-                  value={selectedTenantId}
-                  disabled={!!editingPayment}
+                  value={selectedTenantId ?? ''}
                   onChange={(e) => {
-                    setSelectedPlanTenantId(e.target.value);
-                    const tenant = tenants.find(t => t.id === e.target.value);
-                    if (tenant) {
-                      setPaymentAmount(tenant.planSlug.includes('pro') ? 350000 : 150000);
-                    }
+                    const id = Number(e.target.value);
+                    setSelectedPlanTenantId(id);
+                    // O valor por defecto e' o plano que o tenant tem: nao se
+                    // adivinha o preco a partir do nome do plano.
+                    const tenant = tenants.find((t) => t.id === id);
+                    setPaymentAmount(tenant?.planoPrecoAoa ?? 0);
                   }}
                   className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-850 dark:border-slate-300 py-2 px-3 rounded-lg text-slate-300 dark:text-slate-900 focus:outline-none"
                   required
                 >
                   {tenants.filter(t => t.status !== 'cancelled').map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name} ({t.code})
+                      {t.nome} ({t.codigo})
                     </option>
                   ))}
                 </select>
@@ -331,18 +297,14 @@ export function PaymentsListPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-slate-500 font-semibold">Estado *</label>
-                  <select
-                    value={paymentStatus}
-                    onChange={(e) => setPaymentStatus(e.target.value as any)}
-                    className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-855 dark:border-slate-300 py-2 px-3 rounded-lg text-slate-300 dark:text-slate-900 focus:outline-none"
-                    required
-                  >
-                    <option value="pending">Pendente</option>
-                    <option value="paid">Liquidado</option>
-                    <option value="failed">Falhado</option>
-                    <option value="refunded">Reembolsado</option>
-                  </select>
+                  <label className="text-slate-500 font-semibold">Refer&ecirc;ncia (Multicaixa / Dep&oacute;sito)</label>
+                  <input
+                    type="text"
+                    value={paymentReference}
+                    onChange={(e) => setPaymentReference(e.target.value)}
+                    className="w-full bg-slate-950 dark:bg-slate-100 border border-slate-850 dark:border-slate-300 py-2 px-3 text-white dark:text-slate-900 focus:outline-none font-mono"
+                    placeholder="Opcional"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
@@ -374,7 +336,7 @@ export function PaymentsListPage() {
               <div className="flex justify-end gap-2 mt-5 pt-3 border-t border-slate-800 dark:border-slate-100">
                 <Button size="sm" type="button" onClick={() => setShowRegisterModal(false)}>Cancelar</Button>
                 <Button size="sm" variant="primary" type="submit">
-                  {editingPayment ? 'Guardar' : 'Emitir Fatura'}
+                  Registar
                 </Button>
               </div>
             </form>

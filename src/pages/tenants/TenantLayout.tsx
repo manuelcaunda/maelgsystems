@@ -5,20 +5,7 @@ import { useTenant } from '../../hooks/useTenant';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { Card } from '../../components/ui/Card';
-import { StatusBadge } from '../../components/ui/StatusBadge';
-import {
-  ShieldAlert,
-  Play,
-  Ban,
-  Trash2,
-  Settings,
-  MoreHorizontal,
-  ChevronDown,
-  Clock,
-  ExternalLink,
-  ChevronRight,
-  Eye
-} from 'lucide-react';
+import { ShieldAlert, Play, Ban, Trash2, Settings, ChevronDown, Clock, ChevronRight } from 'lucide-react';
 import { PATHS } from '../../router/paths';
 
 export function TenantLayout() {
@@ -31,16 +18,14 @@ export function TenantLayout() {
     reactivateTenant,
     cancelTenant,
     deleteTenant,
-    startImpersonation,
-    currentUser,
-  } = useBackoffice();
+    currentUser } = useBackoffice();
 
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const [showSuspendModal, setShowSuspendModal] = useState(false);
   const [showReactivateModal, setShowReactivateModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [suspendReason, setSuspendReason] = useState('Incumprimento Financeiro');
+  const [suspendReason, setSuspendReason] = useState('');
 
   if (!tenant) return null; // Hook redirects inside if not found
 
@@ -57,7 +42,7 @@ export function TenantLayout() {
   ];
 
   // Only super_admin or product_admin see the product outputs
-  const showProductOutputTab = currentUser.role === 'super_admin' && tenant.productSlug === 'maelgest';
+  const showProductOutputTab = currentUser?.role === 'super_admin' && tenant.produtoSlug === 'maelgest';
   if (showProductOutputTab) {
     tabs.push({ label: 'Saídas MaelGest', path: `/tenants/${tenant.id}/maelgest` });
   }
@@ -92,11 +77,11 @@ export function TenantLayout() {
     <div className="space-y-6">
       {/* Header with quick descriptors */}
       <PageHeader
-        title={tenant.name}
-        description={`Código: ${tenant.code} · NIF: ${tenant.nif} · ${tenant.city}, ${tenant.province}`}
+        title={tenant.nome}
+        description={`Código: ${tenant.codigo} · NIF: ${tenant.nif} · ${tenant.city}, ${tenant.province}`}
         breadcrumbs={[
           { label: 'Clientes', href: PATHS.tenants.list },
-          { label: tenant.name },
+          { label: tenant.nome },
           {
             label: pathname.includes('assinatura')
               ? 'Assinatura'
@@ -130,18 +115,6 @@ export function TenantLayout() {
                     
                     <div className="absolute right-0 mt-1.5 w-56 bg-[#1E2329] border border-[#2B3139] text-[#EAECEF] rounded-lg shadow-2xl p-1 z-20 text-xs font-sans animate-fade-in divide-y divide-[#2B3139]">
                       <div className="py-1">
-                        {tenant.productSlug === 'maelgest' && (
-                          <button
-                            onClick={() => {
-                              setIsActionsOpen(false);
-                              startImpersonation(tenant.id);
-                            }}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-amber-400 hover:bg-slate-900 rounded-md font-semibold text-left cursor-pointer"
-                          >
-                            <Eye className="w-4 h-4 shrink-0" />
-                            Iniciar Suporte
-                          </button>
-                        )}
                         
                         {!isCancelled && (
                           isSuspended ? (
@@ -282,10 +255,15 @@ export function TenantLayout() {
         open={showSuspendModal}
         onClose={() => setShowSuspendModal(false)}
         onConfirm={handleSuspend}
-        title={`Suspender ${tenant.name}`}
+        title={`Suspender ${tenant.nome}`}
         description="Esta ação bloqueia o acesso de todos os colaboradores, alunos e utilizadores administrativos do cliente ao software. O faturamento mensal continuará a correr."
         confirmLabel="Suspender Serviço"
         variant="warning"
+        motivo={suspendReason}
+        onMotivoChange={setSuspendReason}
+        motivoLabel="Motivo da suspensão"
+        motivoObrigatorio
+        motivoPlaceholder="Ex.: pendência por liquidar. Fica registado na auditoria."
         consequences={[
           { label: 'Estado do Serviço', value: 'Bloqueado (Suspenso)' },
           { label: 'Utilizadores Impactados', value: 'Todos os utilizadores' },
@@ -299,7 +277,7 @@ export function TenantLayout() {
         open={showReactivateModal}
         onClose={() => setShowReactivateModal(false)}
         onConfirm={handleReactivate}
-        title={`Reativar ${tenant.name}`}
+        title={`Reativar ${tenant.nome}`}
         description="Esta ação restabelece o acesso imediato de todos os utilizadores ao ambiente operacional. Todos os serviços serão re-inicializados na BD correspondente."
         confirmLabel="Reativar Serviço"
         variant="default"
@@ -310,7 +288,7 @@ export function TenantLayout() {
         open={showCancelModal}
         onClose={() => setShowCancelModal(false)}
         onConfirm={handleCancel}
-        title={`CANCELAR DEFINITIVAMENTE ${tenant.name}`}
+        title={`CANCELAR DEFINITIVAMENTE ${tenant.nome}`}
         description="Esta ação desliga de forma definitiva a base de dados de produção do cliente. Todos os dados são congelados e o faturamento será suspenso de imediato. ESTA AÇÃO É IRREVERSÍVEL!"
         confirmLabel="Confirmar Cancelamento Definitivo"
         variant="danger"
@@ -319,7 +297,7 @@ export function TenantLayout() {
           { label: 'Base de Dados Física', value: 'Arquivada e Separada' },
           { label: 'Controlo Fiscal', value: 'Envio de SAF-T final' }
         ]}
-        requireTyping={tenant.name}
+        requireTyping={tenant.nome}
       />
 
       {/* Delete Tenant Dialog (Full CRUD option) */}
@@ -327,7 +305,7 @@ export function TenantLayout() {
         open={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
         onConfirm={handleDelete}
-        title={`ELIMINAR CLIENTE ${tenant.name.toUpperCase()}`}
+        title={`ELIMINAR CLIENTE ${tenant.nome.toUpperCase()}`}
         description="Esta ação removerá completamente o registo deste cliente da base de dados física do Control Plane MaelG Systems. Todas as subscrições, pagamentos associados e históricos serão eliminados permanentemente. ESTA AÇÃO É ABSOLUTAMENTE IRREVERSÍVEL!"
         confirmLabel="Eliminar Definitivamente"
         variant="danger"
@@ -336,7 +314,7 @@ export function TenantLayout() {
           { label: 'Dados de Subscrição', value: 'Removidos permanentemente' },
           { label: 'Histórico de Faturas', value: 'Eliminado da Base Local' }
         ]}
-        requireTyping={tenant.name}
+        requireTyping={tenant.nome}
       />
     </div>
   );
