@@ -419,7 +419,7 @@ export async function listarSubscriptions(): Promise<Subscription[]> {
   }));
 }
 
-/** Muda de plano. O `effectiveDate` e o que o IDEIA.md previa. */
+/** Muda de plano. O `effectiveDate` e o que passa a valer, nao a data de hoje. */
 export async function mudarPlano(
   tenantId: number,
   planoId: number,
@@ -524,7 +524,7 @@ export interface NovoPagamento {
   proofVoucherName?: string;
   notas?: string;
   paidAt?: string;
-  /** Pagar reactiva um tenant suspenso. Regra do IDEIA.md. */
+  /** Pagar reactiva um tenant suspenso. */
   reativarSeSuspenso?: boolean;
 }
 
@@ -572,7 +572,7 @@ export async function registarPagamento(dados: NovoPagamento): Promise<Payment> 
       );
     }
 
-    // regra do IDEIA.md: pagar reactiva um tenant suspenso
+    // pagar reactiva um tenant suspenso
     let reativado = false;
     if (dados.reativarSeSuspenso !== false && t[0].status === 'suspended') {
       await conn.execute(
